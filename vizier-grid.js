@@ -1,7 +1,7 @@
-/* waveloop — grid visualizer
+/* vizier — grid visualizer
    ============================================================================
    A visualization written against the ChromaFrame contract (see
-   waveloop-analysis.js), rendered with Canvas2D + a tiny software 3D pipeline.
+   vizier-analysis.js), rendered with Canvas2D + a tiny software 3D pipeline.
 
    A slowly rotating square of gap-separated cubes, driven as an EQ / spectral
    surface. Two arrangements, cross-faded by the EQ-slide FX:
@@ -24,7 +24,7 @@
 
 'use strict';
 
-import { SPEC } from './waveloop-analysis.js';
+import { SPEC } from './vizier-analysis.js';
 
 const { ANG, RIM_REGS, F_LO, OCT_SPAN } = SPEC;
 const TWO_PI = Math.PI * 2;

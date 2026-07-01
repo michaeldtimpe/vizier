@@ -1,7 +1,7 @@
-/* waveloop — wheel visualizer
+/* vizier — wheel visualizer
    ============================================================================
    The reference visualization, extracted from the original waveloop.html. It
-   consumes ChromaFrames from the AnalysisEngine (see waveloop-analysis.js) and
+   consumes ChromaFrames from the AnalysisEngine (see vizier-analysis.js) and
    knows NOTHING about audio, FFTs, or DSP — only how to draw a pitch-class
    field. Use it as-is, or copy its shape as a template for your own viz.
 
@@ -21,7 +21,7 @@
 
 'use strict';
 
-import { SPEC } from './waveloop-analysis.js';
+import { SPEC } from './vizier-analysis.js';
 
 const { ANG, NREG, RIM_REGS, OCT_SPAN, E_MAX } = SPEC;
 

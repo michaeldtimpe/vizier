@@ -21,10 +21,10 @@ energy field) and **visualization** (that field → pixels):
 
 | File | Role |
 |------|------|
-| `waveloop-analysis.js` | **AnalysisEngine** — audio sources (mic / file+CQT / idle sim), dual-resolution FFT, the 6-layer audio DSP stage, the fold onto the pitch-class circle, makeup gain, per-angle AGC, display smoothing, chord detection, level/beat. Emits a `ChromaFrame` each tick. No DOM, no rendering. |
-| `waveloop-visualizer.js` | **WheelVisualizer** — the CRT pitch-class wheel (WebGL): amplitude-driven radial trails + a stacked-register rim. |
-| `waveloop-grid.js` | **GridVisualizer** — a rotating grid of cubes (Canvas2D + a tiny software-3D pipeline): an EQ / spectral landscape with layerable FX. |
-| `waveloop.html` | Host page: markup + CSS, wires the deck / DSP / mic / viz-switch / FX UI to the engine, and runs the loop pumping frames engine → active visualizer. |
+| `vizier-analysis.js` | **AnalysisEngine** — audio sources (mic / file+CQT / idle sim), dual-resolution FFT, the 6-layer audio DSP stage, the fold onto the pitch-class circle, makeup gain, per-angle AGC, display smoothing, chord detection, level/beat. Emits a `ChromaFrame` each tick. No DOM, no rendering. |
+| `vizier-visualizer.js` | **WheelVisualizer** — the CRT pitch-class wheel (WebGL): amplitude-driven radial trails + a stacked-register rim. |
+| `vizier-grid.js` | **GridVisualizer** — a rotating grid of cubes (Canvas2D + a tiny software-3D pipeline): an EQ / spectral landscape with layerable FX. |
+| `vizier.html` | Host page: markup + CSS, wires the deck / DSP / mic / viz-switch / FX UI to the engine, and runs the loop pumping frames engine → active visualizer. |
 
 There is one shared **AnalysisEngine** (a single audio pipeline per page) and
 any number of **visualizers**, each owning its own canvas. Switching a
@@ -33,7 +33,7 @@ visualizer just toggles which canvas is shown and which one gets `render()`.
 ## The boundary: ChromaFrame
 
 Every `engine.update(nowSec)` returns one frame (full field documented at the
-foot of `waveloop-analysis.js`):
+foot of `vizier-analysis.js`):
 
 ```
 {
@@ -52,7 +52,7 @@ Index a band/angle cell as `band * ang + angle`. Angle 0 is A at 12 o'clock,
 ascending clockwise. The typed arrays are the engine's live buffers — read them
 within the frame; they're overwritten on the next `update()`.
 
-Helpers exported from `waveloop-analysis.js` for visualization authors: `SPEC`
+Helpers exported from `vizier-analysis.js` for visualization authors: `SPEC`
 (the geometry constants), `regColor(o)` / `REG_LUT` (the register→sRGB Oklch
 ramp the engine colors by), `oklchToSrgb`, `NOTE_NAMES`, `DSP_PRESETS`.
 
@@ -85,7 +85,7 @@ cubes read brighter. Four independent **FX** layers:
 - **EQ** — the arrangement morph above (eases in/out).
 - **Fog** — drifting, key-tinted haze behind and in front of the cubes.
 
-Tunables for the Grid are grouped at the top of `waveloop-grid.js`
+Tunables for the Grid are grouped at the top of `vizier-grid.js`
 (`GRID_N`, `MAX_STACK`, `CUBE`, `TILT`, `ROT_SPEED`, `CY_FRAC`, `FILL_FRAC`,
 `PULSE_HZ`, `SWEEP_*`, `FOG_BLOBS`, `DPR_CAP`).
 
@@ -124,7 +124,7 @@ class MyViz {
 ```
 
 Optionally add `setGuides(on)` / `getGuides()` if your viz has reference
-overlays to toggle. Then, in `waveloop.html`: give it a `<canvas>`, construct
+overlays to toggle. Then, in `vizier.html`: give it a `<canvas>`, construct
 it, and add it to the `VIZ` map next to `wheel` and `grid`. The render loop and
 the Wheel/Grid-style switch handle the rest. Everything else — engine, deck,
 DSP, mic, file loading, fullscreen — is independent of which visualizer runs.
@@ -135,7 +135,7 @@ These are ES modules and the deck fetches `waveloop/tracks.json`, so the page
 must be served over `http(s)` (not opened as a `file://` URL):
 
 ```sh
-python3 -m http.server 8000   # then open http://localhost:8000/waveloop.html
+python3 -m http.server 8000   # then open http://localhost:8000/vizier.html
 ```
 
 Local files (via the File button / drag-drop) and mic mode work without any
@@ -145,8 +145,7 @@ directory named by the engine's `basePath` option (default `waveloop/`):
 
 ## Notes
 
-- The entry file (`waveloop.html`), the module filenames (`waveloop-*.js`), and
-  the default data directory (`waveloop/`) keep their original names for
-  continuity with the source project; they can be rebranded without any logic
-  changes (update the imports + the `basePath` option).
+- The default data directory is still `waveloop/` (the engine's `basePath`
+  option), kept for continuity with the source project's track layout; point it
+  anywhere by passing a different `basePath` when constructing the engine.
 - No build step, no dependencies — plain ES modules, WebGL1, and Canvas2D.

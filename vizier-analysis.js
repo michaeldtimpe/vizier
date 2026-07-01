@@ -1,4 +1,4 @@
-/* waveloop — analysis engine
+/* vizier — analysis engine
    ============================================================================
    Reverse-engineered out of the original single-file waveloop.html. This module
    owns EVERYTHING upstream of pixels: audio sources, the FFT/CQT analysis, the

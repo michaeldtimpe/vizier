@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>waveloop</title>
+<title>vizier</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -349,7 +349,7 @@
 <script type="module">
 'use strict';
 
-/* waveloop host
+/* vizier host
    ============================================================================
    Wires the analysis engine to a visualizer and the on-screen UI. This file
    owns no DSP and no rendering math: it instantiates AnalysisEngine (the audio
@@ -359,11 +359,11 @@
 
    To drop in your own visualization, implement a class with resize() and
    render(frame, now, dt) against the ChromaFrame contract (documented at the
-   foot of waveloop-analysis.js) and swap the WheelVisualizer line below. */
+   foot of vizier-analysis.js) and swap the WheelVisualizer line below. */
 
-import { AnalysisEngine, DSP_PRESETS, NOTE_NAMES } from './waveloop-analysis.js';
-import { WheelVisualizer } from './waveloop-visualizer.js';
-import { GridVisualizer } from './waveloop-grid.js';
+import { AnalysisEngine, DSP_PRESETS, NOTE_NAMES } from './vizier-analysis.js';
+import { WheelVisualizer } from './vizier-visualizer.js';
+import { GridVisualizer } from './vizier-grid.js';
 
 const $ = (id) => document.getElementById(id);
 const audioEl = $('localAudio');
