@@ -8,7 +8,7 @@
 #
 # Examples:
 #   demos/tuning/syn_probe.sh /tmp/probe.jsonl
-#   demos/tuning/syn_probe.sh /tmp/one.jsonl 'only=SYN_HEXTUNNEL&media=1'
+#   demos/tuning/syn_probe.sh /tmp/one.jsonl 'only=HEXTUNNEL&media=1'
 #
 # Requires `python3 -m http.server 8123` running from the repo root.
 #

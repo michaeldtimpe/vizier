@@ -11,7 +11,7 @@
 #     SECS       measurement window per (scene, quality) pair
 #
 # Example:
-#   demos/tuning/bench.sh SYN_ALIEN_CAVERN,SYN_MOLTEN,NEBULA 0.75,1.5 6 /tmp/bench
+#   demos/tuning/bench.sh ALIEN_CAVERN,MOLTEN,NEBULA 0.75,1.5 6 /tmp/bench
 #
 # Requires the gallery served at http://localhost:8123 (this repo's
 # `python3 -m http.server 8123`, run from the repo root).

@@ -124,7 +124,7 @@
   .cardbtn .hd { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
   .cardbtn .k { font-size: 10px; color: rgba(207,238,226,0.4); flex: 0 0 auto; }
   .cardbtn.active .k { color: var(--phos); }
-  /* SYN_RAY_MARCHING_EXPERIMENT_62 is a lot wider than a card: clip it rather
+  /* RAY_MARCHING_EXPERIMENT_62 is a lot wider than a card: clip it rather
      than let it spill across its neighbours (the full name is in the tooltip) */
   .cardbtn .nm {
     font-family: "VT323", monospace; font-size: 20px; letter-spacing: 1px;
@@ -371,14 +371,14 @@ const DEMOS = [
      content) driven by this engine's ChromaFrame instead of Synesthesia's own
      analysis. See demos/syn/syn-runtime.js. These four were ported by hand and
      keep their wrappers; the rest come straight off the manifest below. */
-  { name: 'SYN_GEODE',       path: './demos/syn-geode.js',
-    desc: 'syn: raymarched Voronoi geode; crystal lattice over agate.' },
-  { name: 'SYN_FLAME',       path: './demos/syn-flame.js',
-    desc: 'syn: two-buffer reaction-diffusion flame, stoked by bass presence.' },
-  { name: 'SYN_NOVA',        path: './demos/syn-nova.js',
-    desc: 'syn: radial mandala burst; exercises most of the syn_* uniform set.' },
-  { name: 'SYN_MAGNETISMIC', path: './demos/syn-magnetismic.js',
-    desc: 'syn: marketplace scene — raymarched fractal noise sphere / flare.' },
+  { name: 'GEODE',       path: './demos/syn-geode.js',
+    desc: 'raymarched Voronoi geode; crystal lattice over agate.' },
+  { name: 'FLAME',       path: './demos/syn-flame.js',
+    desc: 'two-buffer reaction-diffusion flame, stoked by bass presence.' },
+  { name: 'NOVA',        path: './demos/syn-nova.js',
+    desc: 'radial mandala burst; exercises most of the syn_* uniform set.' },
+  { name: 'MAGNETISMIC', path: './demos/syn-magnetismic.js',
+    desc: 'marketplace scene — raymarched fractal noise sphere / flare.' },
 
   ...SYN_SCENES,
 ];
@@ -535,7 +535,7 @@ function select(i) {
   /* The strip is ~90 cards wide, so the active one has to be brought to the
      reader rather than the other way round. inline:'center' keeps its
      neighbours visible, which is what makes arrow-key browsing legible. The
-     FIRST selection jumps instantly — an opening #SYN_WATERLY should already be
+     FIRST selection jumps instantly — an opening #WATERLY should already be
      in view when the page paints, not glide there over half a second. */
   cards[i].scrollIntoView({ block: 'nearest', inline: 'center',
                             behavior: firstSelect ? 'auto' : 'smooth' });
@@ -1341,8 +1341,8 @@ function tick() {
 /* #name or #4 in the URL opens straight on that demo (handy for a projector
    machine, and for reloading the one you are iterating on) */
 function initialIndex() {
-  // a trailing '*' is display sugar on the media-gated scenes; #SYN_HEXTUNNEL
-  // and #SYN_HEXTUNNEL* have to land in the same place
+  // a trailing '*' is display sugar on the media-gated scenes; #HEXTUNNEL
+  // and #HEXTUNNEL* have to land in the same place
   const h = decodeURIComponent(location.hash.replace(/^#/, ''))
     .trim().toUpperCase().replace(/\*+$/, '');
   if (!h) return 0;
