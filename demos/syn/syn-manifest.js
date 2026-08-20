@@ -113,7 +113,16 @@ export const SYN_SCENES = [
     desc: 'SquareShoals by Alex Rowe - media, feedback, dark, abstract' },
   { name: 'STAINED_GLASS', scene: 'stained_glass.synScene', maxDim: 1080,
     desc: 'Stained Glass by Meebs - media, psychedelic, abstract' },
+  /* The top-right corner ring is driven by syn_BPMTri2 — a free-running
+     triangle wave, so it sweeps forever whether or not anything is playing.
+     This card is an ALIGNMENT target that the follower parks on for long
+     stretches while the room is being set up, and the one crawling element in
+     an otherwise frozen picture reads as a fault. Pinning it to 0 leaves the
+     same thin arc the other three corners show at rest. Done as a `patches`
+     row rather than an edit to the scene folder: that folder is licensed
+     content, gitignored, and a re-import would silently take the edit with it. */
   { name: 'TEST_CARD', scene: 'test_card.synScene', maxDim: 1280,
+    patches: [['syn_BPMTri2', '0.0']],
     desc: 'Test Card by Keijiro Takahashi - utility' },
   { name: 'TRACED_TUNNEL', scene: 'traced_tunnel.synScene', maxDim: 640,
     desc: 'A multipass reflective box tunnel with some random reflective ray scattering thrown in. Basically, it\'s just a remake of W23\'s...' },

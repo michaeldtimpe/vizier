@@ -23,6 +23,17 @@ set -euo pipefail
 HOST="${1:-neo}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# --- presets travel the OTHER way first ------------------------------------
+# scene_presets.json is the one file in this repo the TV machine writes: the
+# panel's SAVE PRESET posts to the follower, which persists it there. A plain
+# push would throw that away. --update copies it back only when neo's copy is
+# the newer one, so a look dialled in on the TV survives (and lands in git),
+# while an edit made here still wins if it is more recent.
+if rsync -a --update "$HOST:arche/vizier/demos/show/scene_presets.json" \
+         "$SRC/demos/show/scene_presets.json" 2>/dev/null; then
+  echo "[deploy] presets: pulled back from $HOST (commit if it changed)"
+fi
+
 echo "[deploy] repo mirror  -> $HOST:Downloads/vizier"
 rsync -a --exclude '.git/' --exclude '__pycache__/' --exclude '.DS_Store' \
       "$SRC/" "$HOST:Downloads/vizier/"
@@ -30,6 +41,19 @@ rsync -a --exclude '.git/' --exclude '__pycache__/' --exclude '.DS_Store' \
 echo "[deploy] runtime copy -> $HOST:arche/vizier  (waveloop/ not needed there)"
 rsync -a --exclude '.git/' --exclude '__pycache__/' --exclude '.DS_Store' \
       --exclude 'waveloop/' "$SRC/" "$HOST:arche/vizier/"
+
+# Both rsyncs above are whole-tree, so demos/show/cues-pm-2026.json,
+# scene_presets.json and demos/show/media/*.mp4 ride along with everything
+# else. Named here only because they are the files a show depends on and the
+# ones worth checking after a deploy:
+echo "[deploy] cue list + presets + insert clips:"
+for f in demos/show/cues-pm-2026.json demos/show/scene_presets.json; do
+  [ -f "$SRC/$f" ] && echo "           $f ($(wc -c <"$SRC/$f" | tr -d ' ') bytes)" \
+                   || echo "           $f  MISSING"
+done
+ls "$SRC/demos/show/media"/*.mp4 >/dev/null 2>&1 \
+  && echo "           media: $(ls -1 "$SRC/demos/show/media"/*.mp4 | wc -l | tr -d ' ') clip(s)" \
+  || echo "           media: NO CLIPS — video inserts will be skipped on the TV"
 
 ssh "$HOST" 'bash -s' <<'REMOTE'
 set -euo pipefail

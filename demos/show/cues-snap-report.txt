@@ -1,0 +1,58 @@
+PM-2026 main-set visual cues — beat snap report
+==============================================================================
+wav      : party-mountain-16bit-release.wav (01:18:22.041)
+method   : full-band + low-band (<200 Hz) spectral flux, n_fft 2048 / hop 256 @ 44.1 kHz
+           (5.8 ms grid), z-scored over a +-3.0 s context, peaks inside +-1.2 s,
+           scored strength * gaussian(delta, sigma 0.8 s). Confidence < 0.35 = flat window,
+           user time kept.
+
+conf = 0.5*min(z/3,1) + 0.5*min(margin/0.35,1).  z is the winning peak's onset
+strength in sigmas above the local mean; margin is how far it beat the next
+candidate >150 ms away (low margin = a steady groove, several equal beats).
+
+#   kind   original  snapped           delta  conf     z margin  scene / video
+------------------------------------------------------------------------------
+1   scene  00:00:00  00:00:00.000        +0ms  1.00   0.0   0.00  PLUS   <-- set start — not snapped
+2   scene  00:03:19  00:03:18.937       -63ms  0.92   4.4   0.30  CIRCLES5
+3   scene  00:06:44  00:06:43.821      -179ms  0.54   3.3   0.03  COMPOUND_IRIS   <-- ambiguous: 5 beats of similar strength in the window — took the one nearest the typed time
+4   scene  00:09:02  00:09:02.175      +175ms  0.78   4.7   0.20  REPLIK8
+5   scene  00:11:34  00:11:33.827      -173ms  0.71   3.7   0.15  MIN_MAX_HEX
+6   scene  00:13:30  00:13:29.438      -562ms  0.83   4.3   0.23  FUZZY_SIGNAL
+7   scene  00:16:43  00:16:42.827      -173ms  0.55   4.4   0.03  BEAMERS   <-- ambiguous: 3 beats of similar strength in the window — took the one nearest the typed time
+8   scene  00:20:39  00:20:39.413      +413ms  0.81   6.3   0.22  LATTIX
+9   scene  00:23:36  00:23:36.622      +622ms  0.50   6.5   0.00  SQUARE_SHOALS   <-- ambiguous: 3 beats of similar strength in the window — took the one nearest the typed time
+10  scene  00:27:22  00:27:22.030       +30ms  1.00   7.5   0.65  HEXOPLANET
+11  video  00:27:33  00:27:33.762      +762ms  0.82   8.9   0.22  moon.mp4
+12  scene  00:29:55  00:29:55.390      +390ms  0.92   7.7   0.29  HILLS_EELS
+13  scene  00:32:22  00:32:21.606      -394ms  0.63   5.2   0.09  WATERLY
+14  scene  00:34:20  00:34:19.682      -318ms  0.98   6.7   0.34  SCAFFOLD_FRACTAL
+15  scene  00:36:58  00:36:57.519      -481ms  0.75   3.8   0.17  FLAME
+16  scene  00:40:20  00:40:20.111      +111ms  0.84   4.8   0.24  TUNNEL_BEAUTY_6
+17  scene  00:43:15  00:43:16.063     +1063ms  0.97  12.5   0.33  ALIEN_CAVERN
+18  video  00:43:35  00:43:35.582      +582ms  1.00  14.1   0.59  dracula.mp4
+19  scene  00:46:26  00:46:26.651      +651ms  0.81   8.3   0.22  PARTY_DOODAD
+20  scene  00:48:15  00:48:15.111      +111ms  0.51   2.5   0.02  KIFS_FLYTHROUGH   <-- ambiguous: 4 beats of similar strength in the window — took the one nearest the typed time
+21  scene  00:50:45  00:50:45.518      +518ms  1.00   9.6   0.45  INKSHOT
+22  scene  00:52:15  00:52:15.036       +36ms  0.51   3.7   0.01  HEXTUNNEL   <-- ambiguous: 4 beats of similar strength in the window — took the one nearest the typed time
+23  scene  00:54:22  00:54:21.601      -399ms  0.80   7.0   0.21  DISPERSION
+24  scene  00:57:19  00:57:18.543      -457ms  0.75   4.1   0.17  GLOB
+25  scene  00:57:48  00:57:47.786      -214ms  0.74   6.6   0.17  KALEIDOWHOA_MAN
+26  scene  01:00:43  01:00:43.001        +1ms  0.68   3.6   0.12  SHROUDED
+27  scene  01:03:37  01:03:37.669      +669ms  0.90   3.7   0.28  NOVA
+28  scene  01:05:33  01:05:33.477      +477ms  0.96   4.0   0.32  MANDALA
+29  scene  01:08:48  01:08:47.461      -539ms  0.84   8.5   0.24  TRACED_TUNNEL
+30  scene  01:12:03  01:12:02.897      -103ms  1.00   4.4   0.46  GLASSIER
+31  scene  01:15:24  01:15:24.036       +36ms  0.98   5.2   0.34  SQUARE_SHOALS
+32  scene  01:18:20  01:18:20.000        +0ms  0.00   0.0   0.00  NEBULA   <-- silent/flat window — kept user time
+------------------------------------------------------------------------------
+cues       : 32 (30 scene changes, 2 video inserts)
+|delta|    : mean 357 ms, median 392 ms, max 1063 ms
+flagged    : 6 (COMPOUND_IRIS, BEAMERS, SQUARE_SHOALS, KIFS_FLYTHROUGH, HEXTUNNEL, NEBULA)
+
+biggest corrections:
+  ALIEN_CAVERN     00:43:15 -> 00:43:16.063  (+1063 ms, conf 0.97)
+  moon.mp4         00:27:33 -> 00:27:33.762  (+762 ms, conf 0.82)
+  NOVA             01:03:37 -> 01:03:37.669  (+669 ms, conf 0.90)
+  PARTY_DOODAD     00:46:26 -> 00:46:26.651  (+651 ms, conf 0.81)
+  SQUARE_SHOALS    00:23:36 -> 00:23:36.622  (+622 ms, conf 0.50)
+  dracula.mp4      00:43:35 -> 00:43:35.582  (+582 ms, conf 1.00)

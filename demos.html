@@ -271,6 +271,23 @@
     #showlogo.breathe img { animation: none; }
   }
 
+  /* Video-insert layer: the cue list's "fun visual" clips (moon, dracula) play
+     OVER the running scene rather than replacing it, so the return to the
+     scene underneath costs nothing — no reload, no recompile, no black frame.
+     Above the logo, below #card. `cover` fills the TV whatever the clip's
+     aspect is, so nothing letterboxes at playback time — note that it cannot
+     help with bars BAKED INTO a clip (moon.mp4 is 4:3 archival footage
+     pillarboxed inside a 1920x1080 frame, and those bars are picture). It is
+     always muted: the follower makes no sound, and an unmuted element would
+     also be refused autoplay. */
+  #showvideo {
+    position: fixed; inset: 0; z-index: 4;
+    width: 100%; height: 100%; object-fit: cover;
+    background: #000; pointer-events: none;
+    display: none;
+  }
+  #showvideo.on { display: block; }
+
   @media (max-width: 760px) {
     #hud { top: 96px; }
     #hud .name { font-size: 32px; }
@@ -285,6 +302,7 @@
 <div id="stage"></div>
 <div id="crt"></div>
 <div id="showlogo"><img id="showlogoimg" alt=""></div>
+<video id="showvideo" muted playsinline preload="auto"></video>
 
 <header>
   <span class="title">vizier // demos</span>
@@ -412,6 +430,13 @@ const DEMOS = [
     desc: 'radial mandala burst; exercises most of the syn_* uniform set.' },
   { name: 'MAGNETISMIC', path: './demos/syn-magnetismic.js',
     desc: 'marketplace scene — raymarched fractal noise sphere / flare.' },
+
+  /* The blackout state. A pickable scene rather than a special case in the
+     follower, so it reaches the TV through exactly the same path as every
+     other cue — the stage map names it, /show/scenes lists it, and show-view's
+     VISUALS grid can select it by hand. See demos/viz-black.js. */
+  { name: 'BLACK',       path: './demos/viz-black.js',
+    desc: 'blackout — an 8x8 black canvas, no GPU work. Boot / idle / done.' },
 
   ...SYN_SCENES,
 ];
@@ -584,6 +609,7 @@ function select(i) {
   if (i === active || i < 0 || i >= slots.length) return;
   if (active >= 0 && slots[active].canvas) slots[active].canvas.style.display = 'none';
   active = i;
+  applyPreset(i);   // the saved look for THIS scene, before it draws a frame
 
   cards.forEach((c, k) => c.classList.toggle('active', k === i));
   const d = DEMOS[i];
@@ -621,6 +647,10 @@ function loadFactory(d) {
         dir: './demos/syn/scenes/' + d.scene,
         maxDim: d.maxDim || 768,
         media: !!d.media,
+        // a manifest row may carry source fixes for its scene; they belong in
+        // the manifest (committed) and not in the scene folder (licensed,
+        // gitignored, and replaced wholesale by a re-import)
+        patches: d.patches,
       }));
   }
   return import(d.path).then((mod) => {
@@ -837,7 +867,7 @@ function applyAudio() {
   SYN_GAIN.hits = a.hits;
 }
 function applyColor() {
-  const c = PREFS.color;
+  const c = PREFS.color;   // live values; a scene preset may have written them
   SYN_GRADE.hue = c.hue * Math.PI / 180;
   SYN_GRADE.sat = c.sat;
   SYN_GRADE.gamma = c.gamma;
@@ -862,6 +892,114 @@ function applyQualityTo(s) {
   inst.maxDim = Math.max(64, Math.round(inst.__baseMaxDim * PREFS.quality));
 }
 function applyQuality() { for (const s of slots) applyQualityTo(s); }
+
+/* ======================================================== per-scene presets
+   ==========================================================================
+   A scene's authored defaults are a starting point, not the look you want on
+   a 4 m screen at 1 a.m. demos/show/scene_presets.json holds, per scene, the
+   control values (plus optionally a colour grade and a quality multiplier)
+   that the operator dialled in, and EVERY activation of that scene reapplies
+   them — a gallery click, a URL hash, and a show cue all funnel through
+   select(), so hooking it there covers all three at once.
+
+   The file lives on the follower and is written by POST /show/preset, so the
+   TV machine and the laptop see the same looks; browsing the gallery off a
+   plain static server simply gets a 404 here and the authored defaults.
+
+   PREFS.color / PREFS.quality are the LIVE values. BASELINE is the operator's
+   global baseline (what localStorage holds and what the sliders edit); a
+   scene with a saved grade/quality overrides the live values while it is up,
+   and a scene without one restores the baseline. Without that split, one
+   scene's saved grade would leak into every scene selected after it. */
+const PRESETS = { rev: 0, map: {}, url: '/show/presets' };
+const BASELINE = { color: { hue: 0, sat: 1, gamma: 1, exposure: 1 }, quality: 1 };
+
+function noteBaseline() {
+  Object.assign(BASELINE.color, PREFS.color);
+  BASELINE.quality = PREFS.quality;
+}
+
+async function fetchPresets() {
+  try {
+    const r = await fetch(PRESETS.url, { cache: 'no-store' });
+    if (!r.ok) return false;
+    const j = await r.json();
+    if (!j || typeof j.presets !== 'object') return false;
+    PRESETS.map = j.presets || {};
+    PRESETS.rev = j.rev || 0;
+    return true;
+  } catch (e) { return false; }        // no follower here: authored defaults
+}
+
+const presetFor = (i) => (i >= 0 && DEMOS[i] ? PRESETS.map[DEMOS[i].name] : null);
+
+/* Controls only exist once the scene's JSON has been fetched and its shaders
+   compiled, which is async and can be seconds after select() returns. Rather
+   than wire the loader up to the preset store, retry on a short timer and let
+   a newer selection cancel an older one by bumping the token. */
+let presetToken = 0;
+function applyPreset(i) {
+  const tok = ++presetToken;
+  const p = presetFor(i) || null;
+
+  // grade + quality first: neither needs the instance to exist
+  Object.assign(PREFS.color, (p && p.grade) ? p.grade : BASELINE.color);
+  PREFS.quality = (p && typeof p.quality === 'number') ? p.quality : BASELINE.quality;
+  applyColor();
+  applyQuality();
+  syncGlobalWidgets();
+
+  if (!p || !p.controls) return;
+  const tryApply = () => {
+    if (tok !== presetToken) return;               // a newer selection won
+    const s = slots[i];
+    if (!s || s.status === 'error') return;
+    const inst = synInst(s);
+    if (!inst || (!inst.ready && !inst.failed)) { setTimeout(tryApply, 120); return; }
+    if (inst.failed) return;
+    for (const c of inst.controls) {
+      if (!(c.name in p.controls)) continue;
+      const v = p.controls[c.name];
+      if (Array.isArray(c.value) && Array.isArray(v)) {
+        for (let k = 0; k < c.value.length; k++) c.value[k] = +v[k] || 0;
+      } else if (!Array.isArray(c.value) && typeof v === 'number') {
+        c.value = v;
+      }
+    }
+    refreshScene(true);                            // widgets show what landed
+  };
+  tryApply();
+}
+
+async function savePreset(clear) {
+  const d = DEMOS[active];
+  if (!d) return;
+  const inst = activeSyn();
+  const controls = {};
+  if (inst) {
+    for (const c of inst.controls) {
+      controls[c.name] = Array.isArray(c.value) ? c.value.slice() : c.value;
+    }
+  }
+  const body = clear
+    ? { scene: d.name, clear: true }
+    : { scene: d.name, controls, grade: { ...PREFS.color }, quality: PREFS.quality };
+  try {
+    const r = await fetch('/show/preset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    PRESETS.rev = j.rev || PRESETS.rev;
+    if (clear) delete PRESETS.map[d.name];
+    else PRESETS.map[d.name] = j.preset;
+    presetNote(clear ? 'cleared' : 'saved');
+  } catch (e) {
+    presetNote('save failed: ' + (e.message || e));
+  }
+}
 
 /* --- widget helpers ----------------------------------------------------- */
 function el(tag, cls, parent) {
@@ -928,6 +1066,11 @@ function sceneKey() {
     + (inst ? (inst.failed ? 'f' : inst.ready ? 'r' : 'l') + inst.controls.length : '-');
 }
 let shownSceneKey = '';
+let presetNoteEl = null;
+
+function presetNote(t) {
+  if (presetNoteEl) presetNoteEl.textContent = 'preset  ' + t;
+}
 
 function sceneEmpty(host, text) { el('div', 'empty', host).textContent = text; }
 
@@ -935,6 +1078,7 @@ function buildScene() {
   const host = $('sceneBody');
   const note = $('secSceneNote');
   host.textContent = '';
+  presetNoteEl = null;      // the old one just went with host.textContent
   note.textContent = '';
   const s = slots[active], d = DEMOS[active];
   if (!s || !d) { sceneEmpty(host, 'nothing selected'); return; }
@@ -957,6 +1101,18 @@ function buildScene() {
               c.value = Array.isArray(c.def) ? c.def.slice() : c.def;
             }
             buildScene(); });
+  /* The saved look for this scene: control values as they stand right now,
+     plus the live grade and quality. Written through the follower so the file
+     is one copy shared by every page, not a per-browser localStorage island. */
+  addButton(host, 'save preset', 'Store these control values (plus the current '
+    + 'grade and quality) as ' + d.name + '\'s look, reapplied every time this '
+    + 'scene comes up — in the gallery and in the show.',
+    () => savePreset(false));
+  addButton(host, 'clear preset', 'Forget the saved look for ' + d.name
+    + ' and go back to the scene\'s authored defaults.',
+    () => savePreset(true));
+  presetNoteEl = el('div', 'rdout', host);
+  presetNoteEl.textContent = presetFor(active) ? 'preset  saved' : 'preset  none';
 
   // group in first-seen UI_GROUP order, which is the order the scene author
   // laid them out in scene.json
@@ -1081,6 +1237,7 @@ function buildGlobals() {
       onInput: (v) => { PREFS.audio[key] = v; applyAudio(); savePrefs(); },
     }));
   }
+  // AUDIO is global on purpose: it is the room's gain staging, not a look.
   addButton(ah, 'reset audio', 'Back to 1.00x across the board', () => {
     for (const k of Object.keys(PREFS.audio)) PREFS.audio[k] = 1;
     applyAudio(); savePrefs();
@@ -1091,12 +1248,12 @@ function buildGlobals() {
   for (const [key, label, min, max, step, fmt] of COLOR_ROWS) {
     colorWidgets.push(addSlider(ch, {
       label, min, max, step, value: PREFS.color[key], fmt,
-      onInput: (v) => { PREFS.color[key] = v; applyColor(); savePrefs(); },
+      onInput: (v) => { PREFS.color[key] = v; applyColor(); noteBaseline(); savePrefs(); },
     }));
   }
   addButton(ch, 'reset color', 'Neutral grade', () => {
     PREFS.color.hue = 0; PREFS.color.sat = 1; PREFS.color.gamma = 1; PREFS.color.exposure = 1;
-    applyColor(); savePrefs();
+    applyColor(); noteBaseline(); savePrefs();
     COLOR_ROWS.forEach(([k], i) => colorWidgets[i].set(PREFS.color[k]));
   });
 
@@ -1104,13 +1261,21 @@ function buildGlobals() {
   qualityWidget = addSlider(qh, {
     label: 'resolution', sub: 'multiplies each scene\'s manifest cap', min: 0.5, max: 2.5, step: 0.05,
     value: PREFS.quality, fmt: (x) => x.toFixed(2) + 'x',
-    onInput: (v) => { PREFS.quality = v; applyQuality(); savePrefs(); },
+    onInput: (v) => { PREFS.quality = v; applyQuality(); noteBaseline(); savePrefs(); },
   });
   addButton(qh, 'reset quality', 'Back to the manifest caps', () => {
-    PREFS.quality = 1; applyQuality(); savePrefs(); qualityWidget.set(1);
+    PREFS.quality = 1; applyQuality(); noteBaseline(); savePrefs(); qualityWidget.set(1);
   });
   bufEl = el('div', 'rdout', qh);
   bufEl.textContent = 'buffer  —';
+}
+
+/* A preset can move the live grade/quality out from under the global widgets;
+   put the sliders where the values actually are, or the panel lies. */
+function syncGlobalWidgets() {
+  if (!colorWidgets.length) return;
+  COLOR_ROWS.forEach(([k], i) => colorWidgets[i].set(PREFS.color[k]));
+  if (qualityWidget) qualityWidget.set(PREFS.quality);
 }
 
 /* --- open / close / layout ---------------------------------------------- */
@@ -1166,6 +1331,7 @@ function panelTick(now) {
 }
 
 loadPrefs();
+noteBaseline();
 applyAudio();
 applyColor();
 buildGlobals();
@@ -1368,7 +1534,11 @@ async function runBench() {
     const i = DEMOS.findIndex((d) => d.name === name);
     if (i < 0) { results.push({ scene: name, error: 'not in the manifest' }); continue; }
     for (const q of quals) {
+      // BASELINE too, not just the live value: select() reapplies the scene's
+      // preset, which restores PREFS.quality from BASELINE — without this the
+      // sweep would silently measure every step at the baseline resolution
       PREFS.quality = q;
+      BASELINE.quality = q;
       applyQuality();
       select(i);
       applyQuality();   // again: the slot may have only just been created
@@ -1482,6 +1652,10 @@ select(initialIndex());
 addEventListener('hashchange', () => select(initialIndex()));
 requestAnimationFrame(tick);
 
+/* The preset store arrives one fetch after the first paint; re-apply once it
+   lands so the opening scene gets its saved look too. */
+fetchPresets().then((ok) => { if (ok && active >= 0) applyPreset(active); });
+
 // bench mode drives selection itself; give the page a beat to settle first
 if (BENCH) setTimeout(() => { runBench().catch((e) => console.error('[bench]', e)); }, 600);
 
@@ -1489,6 +1663,51 @@ if (BENCH) setTimeout(() => { runBench().catch((e) => console.error('[bench]', e
    Everything the follower client is allowed to touch, passed in explicitly —
    the module never reaches into this scope, so what a show command can do to
    the gallery is exactly this list. */
+
+/* The cue list's video inserts. The clip plays OVER the live scene, which
+   keeps running underneath — coming back out of an insert is then just a
+   hidden element, with no reload and no black frame. `st` is null (nothing
+   playing) or {url, t, playing}, where t is the wanted position inside the
+   clip, derived from the show transport by the client. */
+const videoEl = $('showvideo');
+let videoUrl = null;
+function driveVideo(st) {
+  if (!st || !st.url) {
+    if (videoUrl) {
+      videoEl.pause();
+      videoEl.classList.remove('on');
+      videoEl.removeAttribute('src');
+      videoEl.load();          // drop the decoder rather than hold it hidden
+      videoUrl = null;
+    }
+    return null;
+  }
+  if (st.url !== videoUrl) {
+    videoUrl = st.url;
+    videoEl.muted = true;      // belt and braces: the follower makes no sound
+    videoEl.src = st.url;
+    videoEl.classList.add('on');
+  }
+  if (st.playing) {
+    if (videoEl.paused) { const p = videoEl.play(); if (p && p.catch) p.catch(() => {}); }
+  } else if (!videoEl.paused) {
+    videoEl.pause();
+  }
+  // the clip follows the same transport as the audio, so a seek in the show
+  // moves it too; 0.3 s of slack keeps it from fighting normal playback
+  if (videoEl.readyState >= 1 && Math.abs(videoEl.currentTime - st.t) > 0.3) {
+    videoEl.currentTime = Math.max(0, st.t);
+  }
+  // reported back to the follower: from the other machine this is the only
+  // way to tell "the clip is up and running" from "the element is stuck"
+  return {
+    t: Math.round(videoEl.currentTime * 100) / 100,
+    playing: !videoEl.paused,
+    ready: videoEl.readyState,
+    err: videoEl.error ? videoEl.error.code : null,
+  };
+}
+
 if (SHOW) {
   import('./demos/show/show-client.js').then(({ initShow }) => {
     showClient = initShow({
@@ -1505,6 +1724,12 @@ if (SHOW) {
       syncFull: syncShowFull,
       notice: showCard,
       clearNotice: hideCard,
+      video: driveVideo,
+      // a preset saved from any page reaches this one through presets_rev
+      refreshPresets: () => fetchPresets().then((ok) => {
+        if (ok && active >= 0) applyPreset(active);
+      }),
+      presetsRev: () => PRESETS.rev,
     });
   }).catch((err) => {
     console.error('[show]', err);

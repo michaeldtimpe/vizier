@@ -1,17 +1,21 @@
 {
-  "_note": "show-view stage -> vizier scene. THE cue list: the follower resolves it, show-view only displays it (GET /show/status). Stages not listed fall through to `default`. Scene names must match the gallery manifest exactly (demos.html DEMOS + demos/syn/syn-manifest.js); GET /show/scenes lists them with an `available` flag. Confirmed cues: preshow -> TEST_CARD (no logo), opener -> NEBULA + logo. Everything else below is a placeholder awaiting the real cue list.",
+  "_note": "show-view stage -> vizier scene. THE cue list: the follower resolves it, show-view only displays it (GET /show/status). Stages not listed fall through to `default`. Scene names must match the gallery manifest exactly (demos.html DEMOS + demos/syn/syn-manifest.js); GET /show/scenes lists them with an `available` flag. Confirmed cues: preshow -> TEST_CARD (no logo), opener -> NEBULA + logo.",
 
-  "default": { "scene": "TEST_CARD", "logo": false },
+  "_main_note": "`main` is the DJ set: one continuous 78-minute wav, so it cannot be one scene. Its row names a cue file instead of a scene, and the follower's cue engine drives scene / logo / video inserts from the synced TRACK POSITION (demos/show/cues-pm-2026.json, snapped to the beat — see cues-snap-report.txt). A scene override (POST /show/scene) suspends the cue engine until it is released with {name: null}.",
+
+  "_black_note": "BLACK is the blackout state (demos/viz-black.js): no scene, no GPU work, an actually black screen. Boot, `idle` and `done` sit there — those are the hours when the TV is on and the show is not. `preshow` still brings up TEST_CARD, which is the alignment card the operator wants while setting the room up. BLACK is a normal gallery scene, so it also shows up in GET /show/scenes and can be picked by hand from show-view's VISUALS grid.",
+
+  "default": { "scene": "BLACK", "logo": false },
 
   "stages": {
-    "idle":         { "scene": "TEST_CARD", "logo": false },
+    "idle":         { "scene": "BLACK",     "logo": false },
     "armed":        { "scene": "TEST_CARD", "logo": false },
     "preshow":      { "scene": "TEST_CARD", "logo": false },
     "hold_opener":  { "scene": "TEST_CARD", "logo": true  },
     "opener":       { "scene": "NEBULA",    "logo": true  },
     "intermission": { "scene": "TEST_CARD", "logo": true  },
     "hold_main":    { "scene": "TEST_CARD", "logo": true  },
-    "main":         { "scene": "MANDALA",   "logo": false },
-    "done":         { "scene": "TEST_CARD", "logo": false }
+    "main":         { "cues": "cues-pm-2026.json", "scene": "PLUS", "logo": false },
+    "done":         { "scene": "BLACK",     "logo": false }
   }
 }

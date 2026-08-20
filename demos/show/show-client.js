@@ -32,6 +32,7 @@ const POLL_ERR_BACKOFF = 1500;
 export function initShow(host) {
   const {
     engine, audioEl, selectByName, activeName, syncFull, notice, clearNotice,
+    video, refreshPresets, presetsRev,
   } = host;
 
   let cfg = { audible: false, drift_seconds: 0.25 };
@@ -39,6 +40,14 @@ export function initShow(host) {
   let seq = 0;
   let lastScene = null;
   let logoOn = null;
+  /* The cue engine lives in the follower (it owns the transport and the cue
+     file), so all this end has to do is render what the state says. `insert`
+     is the video-insert window the server has decided is live: {video, at,
+     duration}. Its playback position comes from the SAME extrapolated show
+     transport as the audio, so the clip pauses, seeks and resumes with the
+     set instead of free-running off its own element clock. */
+  let insert = null;
+  let lastPresetsRev = null;
 
   // transport as last commanded by the leader, plus when it landed here
   let cmd = { track: null, position: 0, playing: false, duration: 0 };
@@ -97,6 +106,16 @@ export function initShow(host) {
       else clearNotice();
     }
     setLogo(!!st.logo);
+    insert = st.video || null;
+    pushVideo();          // don't wait up to 250 ms for the next drive() tick
+
+    if (presetsRev && refreshPresets && typeof st.presets_rev === 'number') {
+      if (lastPresetsRev === null) lastPresetsRev = st.presets_rev;
+      else if (st.presets_rev !== lastPresetsRev) {
+        lastPresetsRev = st.presets_rev;
+        refreshPresets();
+      }
+    }
 
     const t = st.transport || {};
     const changed = t.track !== cmd.track || t.playing !== cmd.playing
@@ -158,8 +177,41 @@ export function initShow(host) {
     trackIdx = engine.addTrackUrl(name, url);
   }
 
+  /* ------------------------------------------------------- video inserts */
+  const MEDIA_BASE = BASE + '/demos/show/media/';
+  const probed = new Map();       // basename -> true (present) | false (404)
+
+  function probeVideo(name) {
+    if (probed.has(name)) return;
+    probed.set(name, null);       // in flight
+    fetch(MEDIA_BASE + encodeURIComponent(name), { method: 'HEAD', cache: 'no-store' })
+      .then((r) => {
+        probed.set(name, r.ok);
+        if (!r.ok) statusNote = 'video insert missing: ' + name;
+      })
+      .catch(() => { probed.set(name, false); statusNote = 'video insert missing: ' + name; });
+  }
+
+  /* A missing clip must never black out the TV: the scene is already running
+     underneath, so the honest failure mode is simply not raising the overlay. */
+  let videoState = null;      // what the element is actually doing, for report()
+
+  function pushVideo() {
+    if (!video) return;
+    if (!insert || !insert.video) { videoState = video(null); return; }
+    const name = insert.video;
+    probeVideo(name);
+    if (probed.get(name) === false) { videoState = video(null); return; }
+    videoState = video({
+      url: MEDIA_BASE + encodeURIComponent(name),
+      t: Math.max(0, targetPos() - (insert.at || 0)),
+      playing: cmd.playing,
+    });
+  }
+
   let cueing = null;
   function drive() {
+    pushVideo();
     if (cmd.track !== trackKey && !cueing) {
       cueing = cueTrack(cmd.track).finally(() => { cueing = null; });
       return;
@@ -212,6 +264,8 @@ export function initShow(host) {
     const body = {
       scene: activeName(),
       logo: !!logoOn,
+      insert: insert ? insert.video : null,
+      video: videoState,
       track: trackKey,
       playing: !audioEl.paused && engine.currentTrack === trackIdx,
       position: Math.round((audioEl.currentTime || 0) * 100) / 100,

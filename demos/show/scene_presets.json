@@ -1,0 +1,3 @@
+{
+  "_note": "Per-scene saved look, written by the panel's SAVE PRESET button (POST /show/preset) and applied by demos.html on EVERY activation of that scene \u2014 gallery click, URL hash, and show-mode cue alike. Keys are gallery scene names. `controls` is {control name: value} straight off the scene's own CONTROLS block (vec2/vec3 controls are arrays); `grade` and `quality` are optional per-scene overrides of the panel's global COLOR and QUALITY sections, and a scene with no `grade` falls back to whatever the global grade is set to. Delete an entry (or press CLEAR in the panel) to go back to the scene's authored defaults. This file is data, hand-editable, and safe to commit."
+}
