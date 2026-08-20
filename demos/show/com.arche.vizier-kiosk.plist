@@ -65,7 +65,18 @@
      native-fullscreen Space on whichever display owns the window at
      creation time, which is exactly why --window-position must be set to
      the target display *before* Chrome creates the window, computed
-     dynamically as above. -->
+     dynamically as above.
+
+     Trading --kiosk for --start-fullscreen brought back macOS's own
+     "Always Show Toolbar in Full Screen" default, so the address bar and
+     tab strip were reappearing over the gallery in fullscreen. That is a
+     per-profile PREFERENCE (browser.show_fullscreen_toolbar in the
+     --user-data-dir profile's Default/Preferences JSON), not a command-line
+     flag, and Chrome only reads it at startup, so before every launch this
+     script merges {"browser":{"show_fullscreen_toolbar":false}} into that
+     file with python3 (reading the existing JSON and only touching the one
+     key, not overwriting the rest of the profile's prefs, and tolerating a
+     missing/corrupt file on first boot by starting from {}). -->
 <plist version="1.0">
 <dict>
   <key>Label</key>              <string>com.arche.vizier-kiosk</string>
@@ -114,6 +125,28 @@ else
     LOG "display picker produced no usable output (raw: $DISPLAY_INFO); launching without explicit window position"
     POS_ARGS=""
 fi
+PROFILE_DIR="$HOME/Library/Application Support/arche-kiosk/Default"
+mkdir -p "$PROFILE_DIR"
+PREFS_FILE="$PROFILE_DIR/Preferences"
+python3 - "$PREFS_FILE" &lt;&lt;'PYEOF'
+import json, sys
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except (FileNotFoundError, ValueError):
+    data = {}
+if not isinstance(data, dict):
+    data = {}
+browser = data.get("browser")
+if not isinstance(browser, dict):
+    browser = {}
+browser["show_fullscreen_toolbar"] = False
+data["browser"] = browser
+with open(path, "w") as f:
+    json.dump(data, f)
+PYEOF
+LOG "fullscreen-toolbar pref merged into $PREFS_FILE"
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --start-fullscreen $POS_ARGS --mute-audio --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --hide-crash-restore-bubble --disable-features=Translate,MediaRouter --user-data-dir="$HOME/Library/Application Support/arche-kiosk" "http://localhost:8123/demos.html?show=1#TEST_CARD" &amp;
 CHROME=$!
 sleep 5
