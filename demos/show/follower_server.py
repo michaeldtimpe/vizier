@@ -31,6 +31,7 @@ Endpoints (all CORS-open, all JSON except /show/audio):
     GET  /show/events?since=N      long poll; returns as soon as seq > N
     POST /show/scene   {name}      operator override, sticks until the next
                                    stage command or {name: null} to release
+    POST /show/logo    {on}        force the logo layer, same lifetime
     POST /show/stage   {stage}     resolve stage -> scene+logo via stage_map
     POST /show/sync    {track, position, playing, duration}
     POST /show/page    {...}       the gallery page reporting its own state
@@ -150,6 +151,14 @@ class Box:
                 self.source = 'override'
             self._bump()
         return {'scene': self.scene, 'logo': self.logo, 'source': self.source}
+
+    def apply_logo(self, on):
+        """Operator forcing the logo layer up or down. Holds until the next
+        stage command, which re-asserts whatever the map says."""
+        with self.lock:
+            self.logo = bool(on)
+            self._bump()
+        return {'logo': self.logo}
 
     def apply_sync(self, body):
         with self.lock:
@@ -377,6 +386,10 @@ class Handler(SimpleHTTPRequestHandler):
             name = body.get('name')
             r = self.box.apply_scene(name, body.get('logo'))
             print('[follower] scene override -> %s (%s)' % (r['scene'], r['source']))
+            return self._json(self.box.snapshot(self.cfg))
+        if p.path == '/show/logo':
+            r = self.box.apply_logo(body.get('on'))
+            print('[follower] logo %s' % ('on' if r['logo'] else 'off'))
             return self._json(self.box.snapshot(self.cfg))
         if p.path == '/show/sync':
             self.box.apply_sync(body)

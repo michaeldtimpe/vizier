@@ -31,7 +31,7 @@ const POLL_ERR_BACKOFF = 1500;
 
 export function initShow(host) {
   const {
-    engine, audioEl, selectByName, activeName, setImmersive, notice, clearNotice,
+    engine, audioEl, selectByName, activeName, syncFull, notice, clearNotice,
   } = host;
 
   let cfg = { audible: false, drift_seconds: 0.25 };
@@ -50,9 +50,13 @@ export function initShow(host) {
   let lastDrift = null;
   let statusNote = '';
 
-  /* ------------------------------------------------------------- chrome */
-  setImmersive(true);
+  /* ------------------------------------------------------------- chrome
+     `show` hides the readouts unconditionally; the header and strip come and
+     go with real fullscreen (see syncShowFull in demos.html), so a kiosk that
+     is filling the TV is clean, and a windowed one still has a FULL button to
+     click. */
   document.body.classList.add('show');
+  syncFull();
 
   const logoEl = document.getElementById('showlogo');
   const logoImg = document.getElementById('showlogoimg');
@@ -223,6 +227,8 @@ export function initShow(host) {
       // the Fullscreen API does not report, so compare the two directly —
       // this is the only way to see a letterboxed TV from the other machine
       fs: !!document.fullscreenElement,
+      imm: document.body.classList.contains('immersive'),
+      pulse: document.getElementById('pulseBtn').classList.contains('toggled'),
       view: [innerWidth, innerHeight],
       screen: [screen.width, screen.height],
     };

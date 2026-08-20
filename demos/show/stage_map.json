@@ -11,7 +11,7 @@
     "opener":       { "scene": "NEBULA",    "logo": true  },
     "intermission": { "scene": "TEST_CARD", "logo": true  },
     "hold_main":    { "scene": "TEST_CARD", "logo": true  },
-    "main":         { "scene": "NEBULA",    "logo": false },
+    "main":         { "scene": "MANDALA",   "logo": false },
     "done":         { "scene": "TEST_CARD", "logo": false }
   }
 }

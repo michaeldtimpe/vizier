@@ -725,9 +725,13 @@ setStatus();
    With Sim Pulse on, and ONLY in sim mode, the gallery fills in a 118 BPM
    envelope and lifts the level before handing the frame to the demo. Nothing
    downstream can tell the difference; real audio always wins. */
-let pulseOn = true;
+/* Default OFF in ?show=1: a show follower is fed real audio from the leader's
+   deck, and a synthetic 118 BPM envelope firing during a lull (or while a wav
+   is missing) would put a fake beat on the TV. Still toggleable there. */
+let pulseOn = !SHOW;
 const SIM_BPM = 118;
 let simPhase = 0, simBeat = 0;
+$('pulseBtn').classList.toggle('toggled', pulseOn);
 $('pulseBtn').onclick = () => {
   pulseOn = !pulseOn;
   $('pulseBtn').classList.toggle('toggled', pulseOn);
@@ -1171,13 +1175,76 @@ function exitFullscreen() {
   }
   setImmersive(false);
 }
-$('fullBtn').onclick = () => { isImmersive() ? exitFullscreen() : enterFullscreen(); };
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) setImmersive(false);
-});
-document.addEventListener('webkitfullscreenchange', () => {
-  if (!document.webkitFullscreenElement) setImmersive(false);
-});
+
+/* --- show mode: FULL is a mirror of the real window, not an independent bit
+   In ?show=1 the page is the only thing on a TV, so immersive styling has to
+   follow whether the window is ACTUALLY fullscreen — otherwise the operator
+   either stares at gallery chrome on the TV, or (worse) has no header to click
+   FULL in because immersive was latched on at boot.
+
+   Two kinds of fullscreen have to count. The Fullscreen API's, which this page
+   requests, and the browser window's own: Chrome launched with
+   --start-fullscreen or --kiosk fills the display without ever engaging the
+   API, so document.fullscreenElement stays null on a kiosk that is visibly
+   filling the TV. The viewport-vs-screen comparison is what catches that.
+
+   NOTE (verification): the window-level half cannot be exercised in headless
+   Chrome — there is no display and no macOS fullscreen Space — so it is
+   reasoned about here, not measured. The API half and the toggle wiring are. */
+const apiFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+/* Tolerant on purpose: a --start-fullscreen window can sit a menu-bar or notch
+   short of the screen height and is still, to anyone looking at the TV,
+   fullscreen. A merely maximised window is not — Chrome's default 1200x720 on
+   this rig's 1408x881 display is 82% of the height, well under the floor. */
+const windowFull = () => innerHeight >= screen.height * 0.92
+                      && innerWidth >= screen.width * 0.98;
+const isFull = () => apiFull() || windowFull();
+
+/* One latch, because the page cannot always win the argument. When Chrome
+   itself was launched fullscreen, document.exitFullscreen() has nothing to
+   exit — the frame is the window server's, and only the green button or Esc
+   will give it back. Without this the FULL button would look stuck ON: OFF
+   drops the chrome, and the next click would compute "still fullscreen" and
+   try to exit again instead of entering. `false` means the operator asked for
+   controls back; null means follow reality. */
+let showFullOff = false;
+
+function syncShowFull() {
+  if (!SHOW) return;
+  setImmersive(showFullOff ? false : isFull());
+}
+
+$('fullBtn').onclick = () => {
+  if (SHOW) {
+    if (!showFullOff && isFull()) {
+      // hand the window back: chrome returns immediately, and if the page owns
+      // the fullscreen (rather than the launch flags) the frame does too
+      showFullOff = true;
+      exitFullscreen();      // also drops immersive
+    } else {
+      showFullOff = false;
+      enterFullscreen();     // a click is a user gesture, so this is allowed
+      // if the request was refused, fullscreenchange never fires — settle the
+      // chrome from reality instead of leaving a headerless windowed page
+      setTimeout(syncShowFull, 400);
+    }
+    return;
+  }
+  isImmersive() ? exitFullscreen() : enterFullscreen();
+};
+for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) {
+  document.addEventListener(ev, () => {
+    if (SHOW) {
+      if (apiFull()) showFullOff = false;   // fullscreen arrived: follow it again
+      syncShowFull();
+      return;
+    }
+    if (!apiFull()) setImmersive(false);
+  });
+}
+// leaving a macOS fullscreen Space by the green button or Esc resizes the
+// window without firing fullscreenchange — the resize is the only signal
+addEventListener('resize', syncShowFull);
 
 let autoOn = false, autoAt = 0;
 const AUTO_SECS = 20;
@@ -1419,7 +1486,7 @@ if (SHOW) {
         return true;
       },
       activeName: () => (active >= 0 ? DEMOS[active].name : null),
-      setImmersive,
+      syncFull: syncShowFull,
       notice: showCard,
       clearNotice: hideCard,
     });
