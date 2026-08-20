@@ -565,6 +565,21 @@ function showCard(title, body) {
 function hideCard() { $('card').style.display = 'none'; }
 
 /* ------------------------------------------------------------ selection */
+
+/* A scene may vary its look per appearance rather than being the same picture
+   every time — NEBULA steps its palette a golden angle round the hue circle so
+   consecutive visits are different colours of cloud. Opting in is one optional
+   method; scenes without it are untouched. Every scene change in the gallery
+   funnels through select() below (the show client's stage changes call it via
+   selectByName), so hooking it here covers manual, hash, and show-mode paths
+   at once. Construction is the demo's first appearance, so load() calls this
+   too — for a slot that is still loading, select() cannot. */
+function activateScene(s) {
+  if (!s || s.status !== 'ok' || !s.inst) return;
+  if (typeof s.inst.onActivate !== 'function') return;
+  try { s.inst.onActivate(); } catch (err) { console.error('[demos] onActivate', err); }
+}
+
 function select(i) {
   if (i === active || i < 0 || i >= slots.length) return;
   if (active >= 0 && slots[active].canvas) slots[active].canvas.style.display = 'none';
@@ -592,6 +607,7 @@ function select(i) {
   hideCard();
   s.canvas.style.display = 'block';
   safeResize(s);
+  activateScene(s);
 }
 
 /* Both manifest forms resolve to the same thing: a function taking a canvas.
@@ -629,7 +645,7 @@ function load(i) {
     s.status = 'ok';
     applyQualityTo(s);   // the quality slider applies to scenes opened later too
     if (!d.note) cards[i].classList.remove('broken');   // a note keeps the flag
-    if (active === i) { hideCard(); safeResize(s); }
+    if (active === i) { hideCard(); safeResize(s); activateScene(s); }
     else cv.style.display = 'none';
   }).catch((err) => {
     fail(i, err);
