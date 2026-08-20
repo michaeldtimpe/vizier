@@ -27,7 +27,24 @@
      window (measured on neo: the page reported view 1200x720 on a 1920x1080
      screen). Activating it makes kiosk take: view == screen. Chrome runs in
      the background here, not exec'd, so the shell survives to do it — and
-     `wait` keeps this process alive for KeepAlive to watch. -->
+     `wait` keeps this process alive for KeepAlive to watch.
+
+     --window-position/--window-size target the TV, not the built-in display.
+     THESE NUMBERS ARE MACHINE- AND ARRANGEMENT-SPECIFIC — they encode neo's
+     current Displays arrangement (built-in main screen 1408x881 points, with
+     the HDMI TV, 1920x1080 "looks like" points, arranged directly ABOVE it in
+     System Settings > Displays, not beside it). Measured via NSScreen
+     (Swift, on neo): built-in frame=(0,0,1408,881), TV frame=(0,881,1920,
+     1080) in Cocoa's bottom-left/y-up global space. Chrome's --window-position
+     uses top-left/y-down coordinates anchored at the main display's top-left,
+     so the TV's origin there is (0, -(TV height)) = (0,-1080). If the TV is
+     ever re-arranged (e.g. placed to the right of the built-in instead of
+     above it), recompute with the Swift NSScreen snippet in this repo's
+     ops notes and update these two flags. --kiosk alone (no
+     --start-fullscreen) avoids invoking macOS's native fullscreen Space,
+     which is keyed to whichever display owns it at creation time and is
+     what let KeepAlive's respawn land back on the built-in display after the
+     operator manually fullscreened the window on the TV. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>              <string>com.arche.vizier-kiosk</string>
@@ -35,7 +52,7 @@
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>until /usr/bin/curl -sf -o /dev/null http://localhost:8123/show/status; do sleep 1; done; "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --kiosk --start-fullscreen --mute-audio --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --disable-features=Translate,MediaRouter --user-data-dir="$HOME/Library/Application Support/arche-kiosk" "http://localhost:8123/demos.html?show=1#TEST_CARD" & CHROME=$!; sleep 5; /usr/bin/osascript -e 'tell application "Google Chrome" to activate' >/dev/null 2>&1 || true; wait $CHROME</string>
+    <string>until /usr/bin/curl -sf -o /dev/null http://localhost:8123/show/status; do sleep 1; done; "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --kiosk --window-position=0,-1080 --window-size=1920,1080 --mute-audio --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --disable-features=Translate,MediaRouter --user-data-dir="$HOME/Library/Application Support/arche-kiosk" "http://localhost:8123/demos.html?show=1#TEST_CARD" & CHROME=$!; sleep 5; /usr/bin/osascript -e 'tell application "Google Chrome" to activate' >/dev/null 2>&1 || true; wait $CHROME</string>
   </array>
   <key>RunAtLoad</key>          <true/>
   <key>KeepAlive</key>          <true/>
