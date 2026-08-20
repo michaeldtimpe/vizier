@@ -12,7 +12,7 @@
      of the leader machine and this one is silent. The page already runs its
      deck through a GainNode at 0 (demos/show/config.json "audible": false),
      and this flag means even a bad config edit cannot make the TV speak. It
-     mutes OUTPUT only — the WebAudio analyser still gets the signal, so the
+     mutes OUTPUT only, the WebAudio analyser still gets the signal, so the
      scenes stay fully reactive.
 
      Its own --user-data-dir keeps this out of the way of any Chrome the
@@ -21,30 +21,43 @@
      follower is answering. KeepAlive brings it back if it is closed or
      crashes.
 
-     The osascript activate afterwards is NOT decoration. --kiosk on macOS
-     enters fullscreen through the window server, and a Chrome launched by
-     launchd is not the active app, so it stays at Chrome's default 1200x720
-     window (measured on neo: the page reported view 1200x720 on a 1920x1080
-     screen). Activating it makes kiosk take: view == screen. Chrome runs in
-     the background here, not exec'd, so the shell survives to do it — and
+     The osascript activate afterwards is NOT decoration. --start-fullscreen
+     on macOS enters a native fullscreen Space through the window server, and
+     a Chrome launched by launchd is not the active app, so without this it
+     stays at Chrome's default windowed size instead of actually taking the
+     Space. Activating it makes fullscreen take: view == screen. Chrome runs
+     in the background here, not exec'd, so the shell survives to do it, and
      `wait` keeps this process alive for KeepAlive to watch.
 
-     --window-position/--window-size target the TV, not the built-in display.
-     THESE NUMBERS ARE MACHINE- AND ARRANGEMENT-SPECIFIC — they encode neo's
-     current Displays arrangement (built-in main screen 1408x881 points, with
-     the HDMI TV, 1920x1080 "looks like" points, arranged directly ABOVE it in
-     System Settings > Displays, not beside it). Measured via NSScreen
-     (Swift, on neo): built-in frame=(0,0,1408,881), TV frame=(0,881,1920,
-     1080) in Cocoa's bottom-left/y-up global space. Chrome's --window-position
-     uses top-left/y-down coordinates anchored at the main display's top-left,
-     so the TV's origin there is (0, -(TV height)) = (0,-1080). If the TV is
-     ever re-arranged (e.g. placed to the right of the built-in instead of
-     above it), recompute with the Swift NSScreen snippet in this repo's
-     ops notes and update these two flags. --kiosk alone (no
-     --start-fullscreen) avoids invoking macOS's native fullscreen Space,
-     which is keyed to whichever display owns it at creation time and is
-     what let KeepAlive's respawn land back on the built-in display after the
-     operator manually fullscreened the window on the TV. -->
+     WHICH DISPLAY THE WINDOW LANDS ON IS COMPUTED AT EVERY LAUNCH, not
+     hardcoded, so this plist does not need editing when the venue's TV is a
+     different model/resolution/arrangement than neo's. Before starting
+     Chrome the script runs a small Swift program (via `swift -`, reading
+     CoreGraphics CGGetActiveDisplayList/CGDisplayBounds, no PyObjC or
+     Accessibility permission required) that: picks the sole external
+     (non-main) display if there is exactly one; picks the largest external
+     display by area if there are several; and falls back to the main
+     display's own bounds if there is no external display at all, so testing
+     this machine with the TV unplugged still opens a normal fullscreen
+     window instead of failing. CGDisplayBounds already returns
+     top-left-origin, y-down global coordinates, which is exactly the space
+     --window-position/--window-size expect, so no manual coordinate
+     conversion is needed the way an NSScreen-based probe would require. The
+     chosen bounds and the reasoning are logged to this agent's
+     StandardOutPath (/tmp/vizier-kiosk.log) on every launch, prefixed
+     "[kiosk] display picker:", so a venue mismatch is diagnosable after the
+     fact without re-running anything by hand.
+
+     --start-fullscreen (not --kiosk) is deliberate: --kiosk permanently
+     strips Chrome's window chrome so there is no way back to a normal
+     window, whereas --start-fullscreen only puts the window into fullscreen
+     at launch, leaving it a normal traffic-light-button window underneath
+     that the page's own FULL toggle can drop out of fullscreen into
+     something draggable and closeable. --start-fullscreen creates its
+     native-fullscreen Space on whichever display owns the window at
+     creation time, which is exactly why --window-position must be set to
+     the target display *before* Chrome creates the window, computed
+     dynamically as above. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>              <string>com.arche.vizier-kiosk</string>
@@ -52,7 +65,52 @@
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>until /usr/bin/curl -sf -o /dev/null http://localhost:8123/show/status; do sleep 1; done; "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --kiosk --window-position=0,-1080 --window-size=1920,1080 --mute-audio --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --disable-features=Translate,MediaRouter --user-data-dir="$HOME/Library/Application Support/arche-kiosk" "http://localhost:8123/demos.html?show=1#TEST_CARD" & CHROME=$!; sleep 5; /usr/bin/osascript -e 'tell application "Google Chrome" to activate' >/dev/null 2>&1 || true; wait $CHROME</string>
+    <string>until /usr/bin/curl -sf -o /dev/null http://localhost:8123/show/status; do sleep 1; done
+LOG() { echo "$(date '+%Y-%m-%d %H:%M:%S') [kiosk] $*"; }
+DISPLAY_INFO=$(swift - &lt;&lt;'SWIFTEOF'
+import CoreGraphics
+let mainID = CGMainDisplayID()
+var count: UInt32 = 0
+CGGetActiveDisplayList(0, nil, &amp;count)
+var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+CGGetActiveDisplayList(count, &amp;ids, &amp;count)
+struct Disp { let id: CGDirectDisplayID; let bounds: CGRect; let isMain: Bool }
+let displays = ids.map { Disp(id: $0, bounds: CGDisplayBounds($0), isMain: $0 == mainID) }
+let externals = displays.filter { d in !d.isMain }
+func area(_ r: CGRect) -&gt; CGFloat { r.width * r.height }
+let chosen: Disp
+let reason: String
+if externals.count == 1 {
+    chosen = externals[0]
+    reason = "1 external display found (id=\(chosen.id)); using it"
+} else if externals.count &gt; 1 {
+    chosen = externals.max(by: { a, b in area(a.bounds) &lt; area(b.bounds) })!
+    reason = "\(externals.count) external displays found; using largest (id=\(chosen.id), \(Int(chosen.bounds.width))x\(Int(chosen.bounds.height)))"
+} else {
+    chosen = displays.first(where: { d in d.isMain })!
+    reason = "no external display found; falling back to main display (id=\(chosen.id))"
+}
+let b = chosen.bounds
+print("WINDOW_POSITION=\(Int(b.origin.x)),\(Int(b.origin.y))")
+print("WINDOW_SIZE=\(Int(b.width)),\(Int(b.height))")
+print("DECISION=\(reason) bounds=\(b)")
+SWIFTEOF
+)
+WINDOW_POS=$(printf '%s\n' "$DISPLAY_INFO" | grep '^WINDOW_POSITION=' | cut -d= -f2)
+WINDOW_SIZE=$(printf '%s\n' "$DISPLAY_INFO" | grep '^WINDOW_SIZE=' | cut -d= -f2)
+DECISION=$(printf '%s\n' "$DISPLAY_INFO" | grep '^DECISION=' | cut -d= -f2-)
+if [ -n "$WINDOW_POS" ] &amp;&amp; [ -n "$WINDOW_SIZE" ]; then
+    LOG "display picker: $DECISION"
+    POS_ARGS="--window-position=$WINDOW_POS --window-size=$WINDOW_SIZE"
+else
+    LOG "display picker produced no usable output (raw: $DISPLAY_INFO); launching without explicit window position"
+    POS_ARGS=""
+fi
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --start-fullscreen $POS_ARGS --mute-audio --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --disable-features=Translate,MediaRouter --user-data-dir="$HOME/Library/Application Support/arche-kiosk" "http://localhost:8123/demos.html?show=1#TEST_CARD" &amp;
+CHROME=$!
+sleep 5
+/usr/bin/osascript -e 'tell application "Google Chrome" to activate' &gt;/dev/null 2&gt;&amp;1 || true
+wait $CHROME</string>
   </array>
   <key>RunAtLoad</key>          <true/>
   <key>KeepAlive</key>          <true/>
