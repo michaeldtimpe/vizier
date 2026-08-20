@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vizier // demo gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #04070a;
+    --phos: #46ffc8;
+    --phos-dim: rgba(70, 255, 200, 0.35);
+    --amber: #ffb13d;
+    --ink: #cfeee2;
+    --line: rgba(70, 255, 200, 0.18);
+    --panel: rgba(4, 12, 10, 0.82);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+  body { font-family: "IBM Plex Mono", monospace; color: var(--ink); font-size: 13px; }
+
+  #stage { position: fixed; inset: 0; background: var(--bg); }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+
+  #crt {
+    position: fixed; inset: 0; pointer-events: none; z-index: 2;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,0.5) 100%);
+    mix-blend-mode: multiply;
+  }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 16px;
+    background: linear-gradient(180deg, rgba(4,10,9,0.94), rgba(4,10,9,0.55) 80%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  header .title {
+    font-family: "VT323", monospace; font-size: 24px; letter-spacing: 2px;
+    color: var(--phos); text-shadow: 0 0 14px var(--phos-dim);
+  }
+  header .spacer { flex: 1; }
+  button {
+    background: rgba(70,255,200,0.08); border: 1px solid var(--line);
+    color: var(--phos); font: inherit; font-weight: 600;
+    padding: 7px 13px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
+  }
+  button:hover { background: rgba(70,255,200,0.18); border-color: var(--phos-dim); }
+  button:active { transform: translateY(1px); }
+  button.toggled { background: var(--phos); color: #03110c; box-shadow: 0 0 16px var(--phos-dim); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid; padding: 6px 12px;
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+    user-select: none; white-space: nowrap;
+  }
+  .chip .led { width: 8px; height: 8px; border-radius: 50%; }
+  #modeChip.sim { color: var(--amber); border-color: rgba(255,177,61,0.4); background: rgba(255,177,61,0.06); }
+  #modeChip.sim .led { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  #modeChip.mic, #modeChip.local { color: var(--phos); border-color: var(--phos-dim); background: rgba(70,255,200,0.06); }
+  #modeChip.mic .led, #modeChip.local .led { background: var(--phos); box-shadow: 0 0 8px var(--phos); }
+  #fps { font-size: 11px; color: rgba(207,238,226,0.45); letter-spacing: 1px; min-width: 62px; text-align: right; }
+
+  /* --- now-playing / status line --- */
+  #hud {
+    position: fixed; left: 18px; top: 66px; z-index: 9;
+    max-width: min(520px, calc(100vw - 36px));
+    pointer-events: none; user-select: none;
+  }
+  #hud .no { font-size: 11px; letter-spacing: 3px; color: var(--phos-dim); }
+  #hud .name {
+    font-family: "VT323", monospace; font-size: 46px; line-height: 1;
+    color: var(--phos); text-shadow: 0 0 18px var(--phos-dim), 0 0 50px rgba(70,255,200,0.15);
+  }
+  #hud .desc { margin-top: 6px; font-size: 12px; line-height: 1.5; color: rgba(207,238,226,0.72); }
+  #hud .chord { margin-top: 8px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--amber); }
+  #hud .chord:empty { display: none; }
+  #msg {
+    position: fixed; left: 18px; bottom: 156px; z-index: 9;
+    font-size: 11px; color: rgba(207,238,226,0.6);
+    max-width: min(560px, calc(100vw - 36px));
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #msg:empty { display: none; }
+
+  /* --- error / loading card over the stage --- */
+  #card {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    z-index: 8; display: none;
+    padding: 18px 22px; background: var(--panel); border: 1px solid var(--line);
+    max-width: min(620px, calc(100vw - 48px)); box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  }
+  #card .ttl {
+    font-family: "VT323", monospace; font-size: 26px; color: var(--amber);
+    letter-spacing: 1px; margin-bottom: 6px;
+  }
+  #card .body { font-size: 12px; line-height: 1.6; color: rgba(207,238,226,0.8); white-space: pre-wrap; word-break: break-word; }
+
+  /* --- bottom strip: one card per demo, horizontally scrollable --- */
+  #strip {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 9;
+    display: flex; gap: 8px; padding: 10px 12px 12px;
+    overflow-x: auto; overflow-y: hidden;
+    background: linear-gradient(0deg, rgba(4,10,9,0.95), rgba(4,10,9,0.72) 60%, transparent);
+    border-top: 1px solid var(--line);
+    scrollbar-width: thin; scrollbar-color: var(--phos-dim) transparent;
+  }
+  #strip::-webkit-scrollbar { height: 7px; }
+  #strip::-webkit-scrollbar-track { background: transparent; }
+  #strip::-webkit-scrollbar-thumb { background: var(--phos-dim); }
+  .cardbtn {
+    flex: 0 0 auto; width: 168px; padding: 8px 10px; cursor: pointer;
+    background: rgba(4,20,16,0.6); border: 1px solid var(--line);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .cardbtn:hover { background: rgba(70,255,200,0.10); }
+  .cardbtn.active { border-color: var(--phos); background: rgba(70,255,200,0.14); box-shadow: 0 0 18px rgba(70,255,200,0.18); }
+  .cardbtn.broken { border-color: rgba(255,177,61,0.45); }
+  .cardbtn .hd { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+  .cardbtn .k { font-size: 10px; color: rgba(207,238,226,0.4); flex: 0 0 auto; }
+  .cardbtn.active .k { color: var(--phos); }
+  /* SYN_RAY_MARCHING_EXPERIMENT_62 is a lot wider than a card: clip it rather
+     than let it spill across its neighbours (the full name is in the tooltip) */
+  .cardbtn .nm {
+    font-family: "VT323", monospace; font-size: 20px; letter-spacing: 1px;
+    color: rgba(207,238,226,0.85);
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cardbtn.active .nm { color: var(--phos); }
+  .cardbtn.broken .nm { color: var(--amber); }
+  .cardbtn .ds {
+    margin-top: 3px; font-size: 10px; line-height: 1.35; color: rgba(207,238,226,0.5);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  /* --- live control panel (key C) -----------------------------------------
+     Right-hand rail between the header and the strip. `bottom` is set from JS
+     to the strip's measured height so the two never overlap whatever the card
+     text wraps to; #keys hides while it is open rather than sitting under it. */
+  #panel {
+    position: fixed; right: 0; top: 52px; bottom: 128px; z-index: 9;
+    width: min(340px, 100vw);
+    display: none; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--line);
+    box-shadow: -10px 0 40px rgba(0,0,0,0.5);
+    font-size: 11px;
+  }
+  body.panel #panel { display: flex; }
+  body.panel #keys { display: none; }
+
+  .pnl-hd {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-bottom: 1px solid var(--line); flex: 0 0 auto;
+  }
+  .pnl-hd .t {
+    font-family: "VT323", monospace; font-size: 20px; letter-spacing: 2px;
+    color: var(--phos); text-shadow: 0 0 12px var(--phos-dim);
+  }
+  .pnl-hd .hint { margin-left: auto; font-size: 9px; letter-spacing: 1px; color: rgba(207,238,226,0.38); }
+  .pnl-body { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 0 12px 16px;
+              scrollbar-width: thin; scrollbar-color: var(--phos-dim) transparent; }
+  .pnl-body::-webkit-scrollbar { width: 7px; }
+  .pnl-body::-webkit-scrollbar-track { background: transparent; }
+  .pnl-body::-webkit-scrollbar-thumb { background: var(--phos-dim); }
+
+  .sec { border-top: 1px solid var(--line); }
+  .sec:first-child { border-top: 0; }
+  .sechd {
+    display: flex; align-items: center; gap: 8px; padding: 9px 0 6px;
+    cursor: pointer; user-select: none;
+    font-family: "VT323", monospace; font-size: 18px; letter-spacing: 2px; color: var(--phos);
+  }
+  .sechd .arw { font-family: "IBM Plex Mono", monospace; font-size: 9px; opacity: 0.7; width: 9px; }
+  .sechd .note {
+    margin-left: auto; font-family: "IBM Plex Mono", monospace;
+    font-size: 9px; letter-spacing: 1px; color: rgba(207,238,226,0.4); text-transform: uppercase;
+  }
+  .sec.collapsed .secbody { display: none; }
+  .secbody { padding-bottom: 8px; }
+
+  .grp {
+    margin: 11px 0 3px; padding-bottom: 3px;
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--amber); opacity: 0.8; border-bottom: 1px dotted rgba(255,177,61,0.22);
+  }
+  .prow { margin: 6px 0 9px; }
+  .prow .lab {
+    display: flex; align-items: baseline; gap: 8px;
+    font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    color: rgba(207,238,226,0.62);
+  }
+  .prow .lab .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prow .lab .v { margin-left: auto; flex: 0 0 auto; color: var(--phos); font-variant-numeric: tabular-nums; }
+  .prow .sub { font-size: 9px; color: rgba(207,238,226,0.34); text-transform: none; letter-spacing: 0; }
+  .prow.inline { display: flex; align-items: center; gap: 8px; }
+
+  #panel input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 14px; margin: 3px 0 0; background: transparent; cursor: ew-resize;
+  }
+  #panel input[type=range]::-webkit-slider-runnable-track {
+    height: 2px; background: rgba(70,255,200,0.22); border-radius: 0;
+  }
+  #panel input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 8px; height: 14px; margin-top: -6px; border: 0;
+    background: var(--phos); box-shadow: 0 0 8px var(--phos-dim);
+  }
+  #panel input[type=range]::-moz-range-track { height: 2px; background: rgba(70,255,200,0.22); }
+  #panel input[type=range]::-moz-range-thumb {
+    width: 8px; height: 14px; border: 0; border-radius: 0; background: var(--phos);
+  }
+  #panel input[type=checkbox] { accent-color: var(--phos); width: 13px; height: 13px; cursor: pointer; }
+  #panel select, #panel input[type=color] {
+    background: rgba(4,20,16,0.8); border: 1px solid var(--line); color: var(--phos);
+    font: inherit; font-size: 11px; padding: 3px 5px; width: 100%; cursor: pointer;
+  }
+  #panel input[type=color] { padding: 1px; height: 22px; }
+  #panel button.mini { padding: 3px 8px; font-size: 10px; letter-spacing: 1px; }
+  #panel .empty { padding: 10px 0; color: rgba(207,238,226,0.45); line-height: 1.6; }
+  #panel .rdout {
+    margin-top: 8px; font-size: 10px; letter-spacing: 1px;
+    color: rgba(207,238,226,0.5); font-variant-numeric: tabular-nums;
+  }
+
+  #keys {
+    position: fixed; right: 16px; bottom: 132px; z-index: 9;
+    font-size: 10px; letter-spacing: 1px; color: rgba(207,238,226,0.38);
+    text-align: right; pointer-events: none; user-select: none; line-height: 1.7;
+  }
+
+  body.immersive header,
+  body.immersive #strip,
+  body.immersive #keys,
+  body.immersive #panel,
+  body.immersive #msg { display: none; }
+  body.immersive #hud { opacity: 0.35; transition: opacity 0.4s; }
+
+  @media (max-width: 760px) {
+    #hud { top: 96px; }
+    #hud .name { font-size: 32px; }
+    #keys { display: none; }
+    #panel { top: 92px; }
+    .cardbtn { width: 140px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+<div id="crt"></div>
+
+<header>
+  <span class="title">vizier // demos</span>
+  <span class="chip" id="modeChip"><span class="led"></span><span id="modeText">IDLE</span></span>
+  <button id="micBtn" title="React to real sound through your microphone (M)">Mic</button>
+  <button id="fileBtn" title="Play an audio file from your computer">File</button>
+  <input id="fileInput" type="file" accept="audio/*" multiple hidden>
+  <button id="playBtn" title="Play / pause the loaded file" disabled>Play</button>
+  <button id="pulseBtn" class="toggled" title="Idle mode has no beat detector; this fakes a 118 BPM pulse and lifts the level so the beat reactions are visible with no audio. Turns itself off the moment real audio arrives.">Sim Pulse</button>
+  <button id="autoBtn" title="Cycle through the demos every 20 s (A)">Auto</button>
+  <button id="fullBtn" title="Fullscreen; Esc to exit (F)">Full</button>
+  <button id="panelBtn" title="Live controls: scene parameters, audio gains, colour grade, render quality (C)">Ctrl</button>
+  <span class="spacer"></span>
+  <span id="fps">-- fps</span>
+</header>
+
+<div id="hud">
+  <div class="no" id="hudNo">-- / --</div>
+  <div class="name" id="hudName">--</div>
+  <div class="desc" id="hudDesc"></div>
+  <div class="chord" id="hudChord"></div>
+</div>
+
+<div id="msg"></div>
+
+<div id="card">
+  <div class="ttl" id="cardTtl">--</div>
+  <div class="body" id="cardBody"></div>
+</div>
+
+<div id="keys">
+  &larr; &rarr; switch &middot; 1-9 0 - = jump to the first 12<br>
+  scroll the strip for the rest &middot; * = needs media<br>
+  F fullscreen &middot; M mic &middot; A auto-cycle &middot; C controls
+</div>
+
+<div id="strip"></div>
+
+<aside id="panel">
+  <div class="pnl-hd">
+    <span class="t">control</span>
+    <span class="hint">C to close</span>
+  </div>
+  <div class="pnl-body">
+    <div class="sec" id="secScene">
+      <div class="sechd"><span class="arw">&#9660;</span>scene<span class="note" id="secSceneNote"></span></div>
+      <div class="secbody" id="sceneBody"></div>
+    </div>
+    <div class="sec" id="secAudio">
+      <div class="sechd"><span class="arw">&#9660;</span>audio<span class="note">all syn scenes</span></div>
+      <div class="secbody" id="audioBody"></div>
+    </div>
+    <div class="sec" id="secColor">
+      <div class="sechd"><span class="arw">&#9660;</span>color<span class="note">syn only</span></div>
+      <div class="secbody" id="colorBody"></div>
+    </div>
+    <div class="sec" id="secQuality">
+      <div class="sechd"><span class="arw">&#9660;</span>quality<span class="note">syn only</span></div>
+      <div class="secbody" id="qualityBody"></div>
+    </div>
+  </div>
+</aside>
+
+<audio id="localAudio" preload="none"></audio>
+
+<script type="module">
+'use strict';
+
+/* vizier demo gallery
+   ============================================================================
+   A shell for browsing candidate visualizations. It owns exactly one
+   AnalysisEngine (the engine is a singleton by design — module-level audio
+   state), one rAF loop, and a stage of canvases: one canvas per demo, created
+   lazily the first time that demo is selected, and only the active one is
+   rendered or even displayed.
+
+   Every demo is loaded with a dynamic import() and constructed inside a
+   try/catch, so a module that is missing, fails to parse, or throws on its
+   first frame becomes an error card here instead of taking the gallery down.
+
+   Demo contract (see vizier-analysis.js for ChromaFrame):
+       export default class Foo { constructor(canvas) {} resize() {}
+                                  render(frame, now, dt) {} }
+   ========================================================================== */
+
+import { AnalysisEngine } from './vizier-analysis.js';
+import { SYN_SCENES } from './demos/syn/syn-manifest.js';
+/* Two live-mutated settings objects, read every frame by the syn shim. They
+   live in their own tiny module so the panel can exist (and restore saved
+   values) before the 84 KB runtime has been fetched. */
+import { SYN_GAIN, SYN_GRADE } from './demos/syn/syn-settings.js';
+
+const $ = (id) => document.getElementById(id);
+
+/* --------------------------------------------------------------- manifest
+   Two kinds of entry, both lazy:
+
+     { name, path, desc }            a module with a default-exported demo class
+     { name, scene, desc, maxDim }   a .synScene folder run by SynScene
+
+   The second form is how the ~80 imported Synesthesia scenes get here without
+   ~80 near-identical wrapper files: load() constructs SynScene directly from
+   the manifest row. The four hand-ported scenes keep their own wrappers, which
+   is where their per-scene notes and tuning live.
+
+   Names stay [A-Z0-9_] so they work as URL hashes for the capture harness. A
+   `media: true` scene displays with a trailing '*' (its output is gated on a
+   media input it does not have here); the hash matches either spelling. */
+const DEMOS = [
+  { name: 'NEBULA',    path: './demos/viz-nebula.js',
+    desc: 'Domain-warped plasma; chord root sets the palette, chroma draws veins.' },
+  { name: 'MANDALA',   path: './demos/viz-mandala.js',
+    desc: 'Kaleidoscope in log-polar space; fold count from chord quality.' },
+
+  /* --- Synesthesia scenes, run through the compatibility runtime ----------
+     Real .synScene folders (demos/syn/scenes/, gitignored: they are licensed
+     content) driven by this engine's ChromaFrame instead of Synesthesia's own
+     analysis. See demos/syn/syn-runtime.js. These four were ported by hand and
+     keep their wrappers; the rest come straight off the manifest below. */
+  { name: 'SYN_GEODE',       path: './demos/syn-geode.js',
+    desc: 'syn: raymarched Voronoi geode; crystal lattice over agate.' },
+  { name: 'SYN_FLAME',       path: './demos/syn-flame.js',
+    desc: 'syn: two-buffer reaction-diffusion flame, stoked by bass presence.' },
+  { name: 'SYN_NOVA',        path: './demos/syn-nova.js',
+    desc: 'syn: radial mandala burst; exercises most of the syn_* uniform set.' },
+  { name: 'SYN_MAGNETISMIC', path: './demos/syn-magnetismic.js',
+    desc: 'syn: marketplace scene — raymarched fractal noise sphere / flare.' },
+
+  ...SYN_SCENES,
+];
+const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
+const label = (d) => d.name + (d.media ? '*' : '');
+
+const slots = DEMOS.map((d) => ({ def: d, canvas: null, inst: null, status: 'idle', err: '' }));
+let active = -1;
+let firstSelect = true;
+
+/* ------------------------------------------------------- dev capture mode
+   demos.html?capture=N&every=SEC&delay=SEC#NAME grabs N PNG frames of the
+   ACTIVE demo's canvas at a fixed cadence and POSTs each one to a local
+   capture server (see demos/tuning/capture_server.py + capture.sh) — used
+   for offline tuning screenshots from headless Chrome. ?play=1 auto-starts
+   deck playback of the first local track on load (headless Chrome is run
+   with --autoplay-policy=no-user-gesture-required, so this is allowed).
+   Both are complete no-ops without their params: normal browsing is
+   unaffected. */
+const qp = new URLSearchParams(location.search);
+const CAPTURE_N = parseInt(qp.get('capture'), 10) || 0;
+const CAPTURE_EVERY = parseFloat(qp.get('every')) || 2;
+const CAPTURE_DELAY = parseFloat(qp.get('delay')) || 0;
+const CAPTURE_HOST = 'http://localhost:8124';
+const AUTOPLAY = qp.get('play') === '1';
+
+/* ?panel=1 opens the control panel on load (for screenshots and for a
+   projector machine that wants it up from the start). */
+const PANEL_FORCE = qp.get('panel') === '1';
+
+/* ------------------------------------------------------------- bench mode
+   demos.html?bench=1&scenes=SYN_A,SYN_B&quality=0.75,1,1.5&secs=6&out=8124
+   walks every (scene x quality) pair, warms up, measures rAF frame times, and
+   POSTs the lot as JSON to the capture server's /bench before setting
+   document.title = 'BENCH_DONE' for the driver to poll. scenes=ALL is every
+   manifest row. Completely inert without ?bench=1. See demos/tuning/bench.sh. */
+const BENCH = qp.get('bench') === '1';
+const BENCH_SECS = parseFloat(qp.get('secs')) || 6;
+const BENCH_WARM = parseFloat(qp.get('warm')) || 1.5;
+const BENCH_OUT = parseInt(qp.get('out'), 10) || 8124;
+
+const captureT0 = performance.now() / 1000;
+let captureNextAt = captureT0 + CAPTURE_DELAY;
+let captureCount = 0, captureDone = false;
+
+// Fired from inside tick(), synchronously right after the active demo's
+// render() call — WebGL canvases here are created without
+// preserveDrawingBuffer, so the backbuffer can be cleared as soon as the
+// browser composites the frame. Reading it (toBlob snapshots synchronously,
+// even though the encode + callback are async) has to happen before that,
+// i.e. in the same synchronous stretch of JS as render(), not from a
+// separate setInterval/setTimeout.
+function captureTick(now, canvas, demoName) {
+  if (CAPTURE_N <= 0 || captureDone || !canvas) return;
+  if (now < captureNextAt) return;
+  captureNextAt = now + CAPTURE_EVERY;
+  const frameIdx = captureCount++;
+  const isLast = captureCount >= CAPTURE_N;
+  if (isLast) captureDone = true;   // stop scheduling further captures now
+  const elapsed = (now - captureT0).toFixed(3);
+  canvas.toBlob((blob) => {
+    const sent = blob
+      ? fetch(CAPTURE_HOST + '/frame'
+          + '?demo=' + encodeURIComponent(demoName)
+          + '&frame=' + frameIdx
+          + '&elapsed=' + elapsed, {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/png' },
+          body: blob,
+        })
+      : Promise.resolve();
+    // /done must not race ahead of the last frame's POST, or the capture
+    // server can exit before that frame lands — so it only fires once the
+    // last frame's send has settled (success or failure either way).
+    sent.catch(() => {}).then(() => {
+      if (isLast) fetch(CAPTURE_HOST + '/done', { method: 'POST' }).catch(() => {});
+    });
+  }, 'image/png');
+}
+
+/* --------------------------------------------------------------- engine */
+const audioEl = $('localAudio');
+let autoplayFired = false;
+const engine = new AnalysisEngine({
+  audioEl,
+  basePath: 'waveloop/',
+  onMessage: (t) => {
+    // the gallery has no deck UI; a missing waveloop/ manifest is normal here
+    $('msg').textContent = /manifest unavailable/.test(t)
+      ? '> no local deck — press MIC, or drop an audio file anywhere on the page'
+      : t;
+  },
+  onTracksLoaded: () => {
+    $('playBtn').disabled = engine.tracks.length === 0;
+    if (AUTOPLAY && !autoplayFired && engine.tracks.length) {
+      autoplayFired = true;
+      engine.playTrack(0);   // playTrack() also resumes the AudioContext if suspended
+    }
+  },
+  onStatusChange: () => setStatus(),
+});
+engine.loadTracks();   // optional local deck; absent manifest just prints a note
+
+/* ------------------------------------------------------------ demo strip */
+const stripEl = $('strip');
+const cards = DEMOS.map((d, i) => {
+  const el = document.createElement('div');
+  el.className = 'cardbtn';
+  el.innerHTML = '<div class="hd"><span class="k"></span><span class="nm"></span></div>'
+               + '<div class="ds"></div>';
+  el.querySelector('.k').textContent = KEYS[i] || String(i + 1);
+  el.querySelector('.nm').textContent = label(d);
+  el.querySelector('.ds').textContent = d.desc;
+  // a manifest `note` is a caveat the batch triage found (see
+  // demos/tuning/syn_probe.sh) — say so on the card rather than letting someone
+  // click into a black canvas and wonder
+  if (d.note) el.classList.add('broken');
+  el.title = label(d) + ' — ' + d.desc
+    + (d.note ? '\n\n! ' + d.note : '')
+    + (d.media ? '\n\n* output is gated on a media input; the runtime substitutes'
+               + ' a generated test pattern.' : '');
+  el.onclick = () => select(i);
+  stripEl.appendChild(el);
+  return el;
+});
+
+/* A trackpad or wheel over the strip scrolls the page nowhere (body is
+   overflow:hidden), so map vertical wheel onto the strip's horizontal axis —
+   with ~85 cards, dragging the scrollbar is otherwise the only way through. */
+stripEl.addEventListener('wheel', (e) => {
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;   // real horizontal swipe
+  e.preventDefault();
+  stripEl.scrollLeft += e.deltaY;
+}, { passive: false });
+
+function showCard(title, body) {
+  $('cardTtl').textContent = title;
+  $('cardBody').textContent = body || '';
+  $('card').style.display = 'block';
+}
+function hideCard() { $('card').style.display = 'none'; }
+
+/* ------------------------------------------------------------ selection */
+function select(i) {
+  if (i === active || i < 0 || i >= slots.length) return;
+  if (active >= 0 && slots[active].canvas) slots[active].canvas.style.display = 'none';
+  active = i;
+
+  cards.forEach((c, k) => c.classList.toggle('active', k === i));
+  const d = DEMOS[i];
+  $('hudNo').textContent = String(i + 1).padStart(2, '0') + ' / ' + DEMOS.length;
+  $('hudName').textContent = label(d);
+  $('hudDesc').textContent = d.desc + (d.note ? '  ·  ! ' + d.note : '');
+  /* The strip is ~90 cards wide, so the active one has to be brought to the
+     reader rather than the other way round. inline:'center' keeps its
+     neighbours visible, which is what makes arrow-key browsing legible. The
+     FIRST selection jumps instantly — an opening #SYN_WATERLY should already be
+     in view when the page paints, not glide there over half a second. */
+  cards[i].scrollIntoView({ block: 'nearest', inline: 'center',
+                            behavior: firstSelect ? 'auto' : 'smooth' });
+  firstSelect = false;
+  refreshScene(false);   // the panel's SCENE section follows the selection
+
+  const s = slots[i];
+  if (s.status === 'idle') { load(i); return; }
+  if (s.status === 'loading') { showCard(label(d), 'loading ...'); return; }
+  if (s.status === 'error') { showCard(label(d) + ' unavailable', s.err); return; }
+  hideCard();
+  s.canvas.style.display = 'block';
+  safeResize(s);
+}
+
+/* Both manifest forms resolve to the same thing: a function taking a canvas.
+   For a `scene` row that is SynScene bound to the scene folder — the runtime
+   module is imported dynamically, so nothing about the Synesthesia shim is
+   fetched until the first syn scene is opened. */
+function loadFactory(d) {
+  if (d.scene) {
+    return import('./demos/syn/syn-runtime.js').then(({ SynScene }) => (cv) =>
+      new SynScene(cv, {
+        dir: './demos/syn/scenes/' + d.scene,
+        maxDim: d.maxDim || 768,
+        media: !!d.media,
+      }));
+  }
+  return import(d.path).then((mod) => {
+    const Klass = mod.default || mod[d.name] || Object.values(mod)[0];
+    if (typeof Klass !== 'function') throw new Error('module has no default-exported class');
+    return (cv) => new Klass(cv);
+  });
+}
+
+function load(i) {
+  const s = slots[i], d = DEMOS[i];
+  const src = d.path || ('demos/syn/scenes/' + d.scene);
+  s.status = 'loading';
+  showCard(label(d), 'loading ' + src + ' ...');
+  loadFactory(d).then((make) => {
+    const cv = document.createElement('canvas');
+    $('stage').appendChild(cv);
+    s.canvas = cv;
+    // visible before construction so the first resize() measures a real box
+    cv.style.display = (active === i) ? 'block' : 'none';
+    s.inst = make(cv);
+    s.status = 'ok';
+    applyQualityTo(s);   // the quality slider applies to scenes opened later too
+    if (!d.note) cards[i].classList.remove('broken');   // a note keeps the flag
+    if (active === i) { hideCard(); safeResize(s); }
+    else cv.style.display = 'none';
+  }).catch((err) => {
+    fail(i, err);
+  });
+}
+
+function fail(i, err) {
+  const s = slots[i];
+  s.status = 'error';
+  s.err = (err && (err.stack || err.message)) ? String(err.stack || err.message) : String(err);
+  cards[i].classList.add('broken');
+  if (s.canvas) { s.canvas.style.display = 'none'; }
+  const src = DEMOS[i].path || ('demos/syn/scenes/' + DEMOS[i].scene);
+  if (active === i) {
+    showCard(label(DEMOS[i]) + ' unavailable',
+      s.err + '\n\n(' + src + ' — the rest of the gallery is unaffected.)');
+  }
+  console.error('[demos] ' + src, err);
+}
+
+function safeResize(s) {
+  if (!s.inst || typeof s.inst.resize !== 'function') return;
+  try { s.inst.resize(); } catch (err) { fail(slots.indexOf(s), err); }
+}
+
+addEventListener('resize', () => {
+  if (active >= 0 && slots[active].status === 'ok') safeResize(slots[active]);
+});
+
+/* --------------------------------------------------------- source buttons
+   Same wiring as vizier.html: mic through engine.enableMic(), local files
+   added to the engine's deck as blob-backed tracks. */
+$('micBtn').onclick = async () => {
+  if (engine.mode === 'mic') {
+    engine.disableMic();
+  } else {
+    try { await engine.enableMic(); }
+    catch (err) { $('msg').textContent = '> mic unavailable: ' + (err.message || err.name || err); }
+  }
+  setStatus();
+};
+
+function addFiles(files) {
+  let first = -1;
+  for (const f of files) {
+    if (!f) continue;
+    const ok = /^audio\//.test(f.type)
+      || /\.(mp3|wav|ogg|flac|m4a|aac|opus|webm)$/i.test(f.name || '');
+    if (!ok) continue;
+    const i = engine.addLocalFile(f);
+    if (first < 0) first = i;
+  }
+  if (first >= 0) engine.playTrack(first);
+}
+$('fileBtn').onclick = () => $('fileInput').click();
+$('fileInput').addEventListener('change', () => {
+  addFiles(Array.from($('fileInput').files || []));
+  $('fileInput').value = '';
+});
+addEventListener('dragover', (e) => e.preventDefault());
+addEventListener('drop', (e) => {
+  e.preventDefault();
+  if (e.dataTransfer && e.dataTransfer.files.length) addFiles(Array.from(e.dataTransfer.files));
+});
+
+$('playBtn').onclick = () => {
+  if (engine.currentTrack < 0) { if (engine.tracks.length) engine.playTrack(0); return; }
+  if (audioEl.paused) engine.playTrack(engine.currentTrack);
+  else audioEl.pause();
+};
+for (const ev of ['play', 'pause', 'ended']) {
+  audioEl.addEventListener(ev, () => { engine.notePlayStateChange(); setStatus(); });
+}
+audioEl.addEventListener('ended', () => {
+  if (engine.tracks.length > 1) engine.playTrack((engine.currentTrack + 1) % engine.tracks.length);
+});
+audioEl.addEventListener('error', () => { $('msg').textContent = '> error: could not load track'; });
+
+function setStatus() {
+  const chip = $('modeChip');
+  chip.className = 'chip ' + engine.mode;
+  $('modeText').textContent = engine.mode === 'mic' ? 'LIVE MIC'
+    : engine.mode === 'local' ? 'LOCAL' : 'IDLE';
+  $('micBtn').classList.toggle('toggled', engine.mode === 'mic');
+  $('playBtn').disabled = engine.tracks.length === 0;
+  $('playBtn').textContent = engine.isPlaying() ? 'Pause' : 'Play';
+}
+setStatus();
+
+/* ------------------------------------------------------ idle "sim pulse"
+   The engine's idle shimmer carries no beat (nothing to detect) and sits at
+   level ~0.08, so beat-driven demos would look dead on an untouched page.
+   With Sim Pulse on, and ONLY in sim mode, the gallery fills in a 118 BPM
+   envelope and lifts the level before handing the frame to the demo. Nothing
+   downstream can tell the difference; real audio always wins. */
+let pulseOn = true;
+const SIM_BPM = 118;
+let simPhase = 0, simBeat = 0;
+$('pulseBtn').onclick = () => {
+  pulseOn = !pulseOn;
+  $('pulseBtn').classList.toggle('toggled', pulseOn);
+};
+
+function applySim(f, dt) {
+  if (f.mode !== 'sim' || !pulseOn) return;
+  simPhase += dt * (SIM_BPM / 60);
+  if (simPhase >= 1) { simPhase -= Math.floor(simPhase); simBeat = 1; }
+  simBeat = Math.max(0, simBeat - dt * 3.2);
+  f.beat = simBeat;
+  f.level = 0.34 + 0.10 * Math.sin(simPhase * Math.PI * 2) + 0.14 * simBeat;
+}
+
+/* ============================================================ control panel
+   ==========================================================================
+   Four sections in a right-hand rail, toggled with C.
+
+     SCENE     built from the active SynScene's `controls[]`, which is exactly
+               the scene.json CONTROLS block. The runtime uploads every entry's
+               `.value` on every pass of every frame, so a widget's job is
+               simply to assign to it — no recompile, no signalling, and the
+               change lands on the next frame.
+     AUDIO     master / per-band / hits gains, mutated into SYN_GAIN.
+     COLOR     hue-sat-gamma-exposure, mutated into SYN_GRADE, applied in the
+               shim's final blit. Syn scenes only: NEBULA and MANDALA composite
+               themselves and never pass through it.
+     QUALITY   a multiplier on every syn scene's manifest maxDim, which
+               SynScene.resize() re-reads every frame.
+
+   AUDIO / COLOR / QUALITY persist in localStorage; per-scene control values do
+   not (they are the scene's own authored defaults, and a stale saved value on
+   a scene you have not opened for a week is a bug report, not a feature).
+
+   Nothing here runs per frame except panelTick(), which is throttled to 3 Hz
+   and only touches the DOM when a string actually changed. */
+const PREFS_KEY = 'vizier.panel.v1';
+const PREFS = {
+  open: false,
+  audio: { master: 1, bass: 1, mid: 1, midhigh: 1, high: 1, hits: 1 },
+  color: { hue: 0, sat: 1, gamma: 1, exposure: 1 },   // hue in DEGREES here
+  quality: 1,
+};
+const AUDIO_ROWS = [
+  ['master', 'master', 'whole mix'],
+  ['bass', 'bass', '20-160 Hz'],
+  ['mid', 'mid', ''],
+  ['midhigh', 'mid-high', ''],
+  ['high', 'high', ''],
+  ['hits', 'hits sens', 'transient envelopes'],
+];
+const COLOR_ROWS = [
+  ['hue', 'hue rotate', -180, 180, 1, (x) => x.toFixed(0) + '°'],
+  ['sat', 'saturation', 0, 2, 0.01, null],
+  ['gamma', 'gamma', 0.5, 2, 0.01, null],
+  ['exposure', 'brightness', 0.5, 2, 0.01, null],
+];
+
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const num = (x, dflt) => { const v = Number(x); return Number.isFinite(v) ? v : dflt; };
+
+function loadPrefs() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); } catch (e) { /* ignore */ }
+  if (!saved || typeof saved !== 'object') return;
+  for (const k of Object.keys(PREFS.audio)) PREFS.audio[k] = num(saved.audio && saved.audio[k], PREFS.audio[k]);
+  for (const k of Object.keys(PREFS.color)) PREFS.color[k] = num(saved.color && saved.color[k], PREFS.color[k]);
+  PREFS.quality = num(saved.quality, 1);
+  PREFS.open = !!saved.open;
+}
+
+let saveAt = 0;
+function savePrefs() {
+  // sliders fire `input` continuously; one write per quarter second is plenty
+  clearTimeout(saveAt);
+  saveAt = setTimeout(() => {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(PREFS)); } catch (e) { /* private mode */ }
+  }, 250);
+}
+
+/* --- pushing prefs into the shim --------------------------------------- */
+function applyAudio() {
+  const a = PREFS.audio;
+  SYN_GAIN.master = a.master;
+  SYN_GAIN.band[0] = a.bass; SYN_GAIN.band[1] = a.mid;
+  SYN_GAIN.band[2] = a.midhigh; SYN_GAIN.band[3] = a.high;
+  SYN_GAIN.hits = a.hits;
+}
+function applyColor() {
+  const c = PREFS.color;
+  SYN_GRADE.hue = c.hue * Math.PI / 180;
+  SYN_GRADE.sat = c.sat;
+  SYN_GRADE.gamma = c.gamma;
+  SYN_GRADE.exposure = c.exposure;
+}
+
+/* A loaded slot's instance, if it is a SynScene (duck-typed: the two native
+   demos have neither a controls array nor a maxDim). */
+function synInst(s) {
+  const i = s && s.status === 'ok' ? s.inst : null;
+  return (i && Array.isArray(i.controls) && typeof i.maxDim === 'number') ? i : null;
+}
+const activeSyn = () => synInst(slots[active]);
+
+function applyQualityTo(s) {
+  const inst = synInst(s);
+  if (!inst) return;
+  /* Remember the manifest cap the first time we meet an instance: the four
+     hand-ported scenes set their own in their wrapper module, so DEMOS[i] is
+     not a complete source for it. */
+  if (inst.__baseMaxDim === undefined) inst.__baseMaxDim = inst.maxDim;
+  inst.maxDim = Math.max(64, Math.round(inst.__baseMaxDim * PREFS.quality));
+}
+function applyQuality() { for (const s of slots) applyQualityTo(s); }
+
+/* --- widget helpers ----------------------------------------------------- */
+function el(tag, cls, parent) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function addSlider(host, o) {
+  const row = el('div', 'prow', host);
+  if (o.title) row.title = o.title;
+  const lab = el('div', 'lab', row);
+  el('span', 'n', lab).textContent = o.label;
+  const vEl = el('span', 'v', lab);
+  if (o.sub) el('div', 'sub', row).textContent = o.sub;   // caption under the label
+  const inp = el('input', null, row);
+  inp.type = 'range';
+  inp.min = o.min; inp.max = o.max; inp.step = o.step;
+  /* xform maps the DOM's raw [min,max] travel to the real value that gets
+     shown and written out. It defaults to identity; addSceneControl passes a
+     mirror transform (x => lo+hi-x, its own inverse) for scenes whose
+     authored MIN > MAX, so the widget's left edge still lands on MIN and its
+     right edge on MAX instead of on the arbitrary smaller number. */
+  const xf = o.xform || ((x) => x);
+  inp.value = xf(o.value);
+  const fmt = o.fmt || ((x) => x.toFixed(2));
+  const show = () => { vEl.textContent = fmt(xf(parseFloat(inp.value))); };
+  inp.addEventListener('input', () => { show(); o.onInput(xf(parseFloat(inp.value))); });
+  show();
+  return { set(x) { inp.value = xf(x); show(); } };
+}
+
+function addToggle(host, o) {
+  const row = el('div', 'prow inline', host);
+  if (o.title) row.title = o.title;
+  const inp = el('input', null, row);
+  inp.type = 'checkbox';
+  inp.checked = !!o.value;
+  const lab = el('div', 'lab', row);
+  el('span', 'n', lab).textContent = o.label;
+  inp.addEventListener('change', () => o.onInput(inp.checked));
+  return { set(x) { inp.checked = !!x; } };
+}
+
+function addButton(host, label, title, onDown) {
+  const row = el('div', 'prow inline', host);
+  if (title) row.title = title;
+  const b = el('button', 'mini', row);
+  b.textContent = label;
+  b.addEventListener('pointerdown', onDown);
+  return b;
+}
+
+/* --- the scene section -------------------------------------------------- */
+/* Cheap identity for "what the SCENE section is currently showing", so the
+   3 Hz tick can notice a scene finishing its async load (or failing) without
+   the panel having to be wired into the loader. */
+function sceneKey() {
+  const s = slots[active];
+  if (!s) return 'none';
+  const inst = synInst(s);
+  return active + '|' + s.status + '|'
+    + (inst ? (inst.failed ? 'f' : inst.ready ? 'r' : 'l') + inst.controls.length : '-');
+}
+let shownSceneKey = '';
+
+function sceneEmpty(host, text) { el('div', 'empty', host).textContent = text; }
+
+function buildScene() {
+  const host = $('sceneBody');
+  const note = $('secSceneNote');
+  host.textContent = '';
+  note.textContent = '';
+  const s = slots[active], d = DEMOS[active];
+  if (!s || !d) { sceneEmpty(host, 'nothing selected'); return; }
+  note.textContent = d.name.slice(0, 22);
+  if (s.status === 'loading' || s.status === 'idle') { sceneEmpty(host, 'loading …'); return; }
+  if (s.status === 'error') { sceneEmpty(host, 'this demo failed to load — see the card on stage.'); return; }
+  const inst = synInst(s);
+  if (!inst) {
+    sceneEmpty(host, 'no scene controls — ' + d.name + ' is a native WebGL demo, '
+      + 'not a Synesthesia scene. The AUDIO / COLOR / QUALITY sections below do '
+      + 'not reach it either.');
+    return;
+  }
+  if (inst.failed) { sceneEmpty(host, 'this scene failed to compile.'); return; }
+  if (!inst.ready) { sceneEmpty(host, 'compiling …'); return; }
+  if (!inst.controls.length) { sceneEmpty(host, 'this scene declares no CONTROLS.'); return; }
+
+  addButton(host, 'reset scene', 'Restore every control to its scene.json default',
+    () => { for (const c of inst.controls) {
+              c.value = Array.isArray(c.def) ? c.def.slice() : c.def;
+            }
+            buildScene(); });
+
+  // group in first-seen UI_GROUP order, which is the order the scene author
+  // laid them out in scene.json
+  const groups = new Map();
+  for (const c of inst.controls) {
+    const g = (c.spec && c.spec.UI_GROUP) || 'controls';
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(c);
+  }
+  for (const [g, list] of groups) {
+    el('div', 'grp', host).textContent = g;
+    for (const c of list) addSceneControl(host, c);
+  }
+}
+
+function addSceneControl(host, c) {
+  const spec = c.spec || {};
+  const type = String(spec.TYPE || 'slider').toLowerCase();
+  const title = spec.DESCRIPTION || '';
+
+  /* MIN/MAX are frequently INVERTED in shipped scenes (alien_cavern's
+     voxel_size is MIN 50 / MAX 1) — Synesthesia maps the widget's 0..1 travel
+     onto MIN..MAX, so the ends carry direction, not bounds. An <input
+     type=range> with min>max is invalid HTML: browsers silently clamp it to
+     a single constant instead of rejecting it, which is why a control like
+     that used to look "dead" — every drag produced the same value. The DOM
+     element always gets [lo,hi]; when the authored MIN was the larger end
+     (inverted) we additionally mirror the raw travel through xform so the
+     widget's left edge still lands on MIN and its right edge on MAX. */
+  let a = num(spec.MIN, NaN), b = num(spec.MAX, NaN);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) {
+    a = type.includes('traveler') ? -1 : 0;   // travelers are signed rates
+    b = 1;
+  }
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  const inverted = a > b;
+  const xform = inverted ? (x) => lo + hi - x : undefined;   // involution: its own inverse
+  const step = (hi - lo) / 200;
+  const fmt = (x) => x.toFixed(hi - lo >= 20 ? 1 : 2);
+
+  if (c.glsl === 'vec3') {                                     // color
+    const row = el('div', 'prow', host);
+    if (title) row.title = title;
+    const lab = el('div', 'lab', row);
+    el('span', 'n', lab).textContent = c.name;
+    const inp = el('input', null, row);
+    inp.type = 'color';
+    inp.value = '#' + [0, 1, 2].map((i) =>
+      Math.round(clamp01(c.value[i]) * 255).toString(16).padStart(2, '0')).join('');
+    inp.addEventListener('input', () => {
+      const h = inp.value;
+      c.value[0] = parseInt(h.slice(1, 3), 16) / 255;
+      c.value[1] = parseInt(h.slice(3, 5), 16) / 255;
+      c.value[2] = parseInt(h.slice(5, 7), 16) / 255;
+    });
+    return;
+  }
+  if (c.glsl === 'vec2') {                                     // xy
+    el('div', 'grp', host).textContent = c.name;
+    for (const axis of [0, 1]) {
+      addSlider(host, {
+        label: (axis ? 'y' : 'x'), title, min: lo, max: hi, step, fmt, xform,
+        value: c.value[axis],
+        onInput: (v) => { c.value[axis] = v; },
+      });
+    }
+    return;
+  }
+  if (type.includes('dropdown') && Array.isArray(spec.LABELS) && spec.LABELS.length) {
+    const row = el('div', 'prow', host);
+    if (title) row.title = title;
+    const lab = el('div', 'lab', row);
+    el('span', 'n', lab).textContent = c.name;
+    const sel = el('select', null, row);
+    spec.LABELS.forEach((t, i) => {
+      const o = el('option', null, sel);
+      o.value = String(i); o.textContent = t;
+    });
+    sel.value = String(Math.round(c.value) || 0);
+    sel.addEventListener('change', () => { c.value = parseFloat(sel.value); });
+    return;
+  }
+  if (type.includes('bang')) {
+    /* A counter bang steps an index the shader reads modulo something; a plain
+       one is momentary. 200 ms of "held" is long enough for a scene to see the
+       edge and short enough that a lost pointerup cannot leave it stuck on. */
+    if (type.includes('counter')) {
+      addButton(host, c.name + ' ▸', title, () => { c.value = (c.value || 0) + 1; });
+    } else {
+      let t = 0;
+      addButton(host, c.name + ' !', title, () => {
+        c.value = 1;
+        clearTimeout(t);
+        t = setTimeout(() => { c.value = 0; }, 200);
+      });
+    }
+    return;
+  }
+  if (type.includes('toggle')) {
+    addToggle(host, {
+      label: c.name, title, value: c.value > 0.5,
+      onInput: (on) => { c.value = on ? 1 : 0; },
+    });
+    return;
+  }
+  addSlider(host, {                                            // slider / knob
+    label: c.name, title, min: lo, max: hi, step, fmt, xform, value: c.value,
+    onInput: (v) => { c.value = v; },
+  });
+}
+
+/* --- the global sections (built once) ----------------------------------- */
+const audioWidgets = [], colorWidgets = [];
+let qualityWidget = null, bufEl = null;
+
+function buildGlobals() {
+  const ah = $('audioBody');
+  for (const [key, label, sub] of AUDIO_ROWS) {
+    audioWidgets.push(addSlider(ah, {
+      label, sub, min: 0, max: 4, step: 0.01, value: PREFS.audio[key],
+      fmt: (x) => x.toFixed(2) + 'x',
+      onInput: (v) => { PREFS.audio[key] = v; applyAudio(); savePrefs(); },
+    }));
+  }
+  addButton(ah, 'reset audio', 'Back to 1.00x across the board', () => {
+    for (const k of Object.keys(PREFS.audio)) PREFS.audio[k] = 1;
+    applyAudio(); savePrefs();
+    AUDIO_ROWS.forEach(([k], i) => audioWidgets[i].set(PREFS.audio[k]));
+  });
+
+  const ch = $('colorBody');
+  for (const [key, label, min, max, step, fmt] of COLOR_ROWS) {
+    colorWidgets.push(addSlider(ch, {
+      label, min, max, step, value: PREFS.color[key], fmt,
+      onInput: (v) => { PREFS.color[key] = v; applyColor(); savePrefs(); },
+    }));
+  }
+  addButton(ch, 'reset color', 'Neutral grade', () => {
+    PREFS.color.hue = 0; PREFS.color.sat = 1; PREFS.color.gamma = 1; PREFS.color.exposure = 1;
+    applyColor(); savePrefs();
+    COLOR_ROWS.forEach(([k], i) => colorWidgets[i].set(PREFS.color[k]));
+  });
+
+  const qh = $('qualityBody');
+  qualityWidget = addSlider(qh, {
+    label: 'resolution', sub: 'multiplies each scene\'s manifest cap', min: 0.5, max: 2.5, step: 0.05,
+    value: PREFS.quality, fmt: (x) => x.toFixed(2) + 'x',
+    onInput: (v) => { PREFS.quality = v; applyQuality(); savePrefs(); },
+  });
+  addButton(qh, 'reset quality', 'Back to the manifest caps', () => {
+    PREFS.quality = 1; applyQuality(); savePrefs(); qualityWidget.set(1);
+  });
+  bufEl = el('div', 'rdout', qh);
+  bufEl.textContent = 'buffer  —';
+}
+
+/* --- open / close / layout ---------------------------------------------- */
+let panelOpen = false;
+const panelEl = $('panel'), headerEl = document.querySelector('header');
+
+function layoutPanel() {
+  // measured, not hard-coded: the header wraps on a narrow window and the
+  // strip's height follows its card text
+  panelEl.style.top = (headerEl.offsetHeight || 52) + 'px';
+  panelEl.style.bottom = (stripEl.offsetHeight || 128) + 'px';
+}
+
+function setPanel(on) {
+  panelOpen = on;
+  document.body.classList.toggle('panel', on);
+  $('panelBtn').classList.toggle('toggled', on);
+  PREFS.open = on;
+  savePrefs();
+  if (on) { layoutPanel(); refreshScene(true); }
+  else {
+    const a = document.activeElement;   // don't leave a slider owning the arrows
+    if (a && panelEl.contains(a) && a.blur) a.blur();
+  }
+}
+
+function refreshScene(force) {
+  if (!panelOpen) return;
+  const k = sceneKey();
+  if (!force && k === shownSceneKey) return;
+  shownSceneKey = k;
+  buildScene();
+}
+
+for (const sec of document.querySelectorAll('#panel .sec')) {
+  sec.querySelector('.sechd').addEventListener('click', () => {
+    const c = sec.classList.toggle('collapsed');
+    sec.querySelector('.arw').innerHTML = c ? '&#9654;' : '&#9660;';
+  });
+}
+$('panelBtn').onclick = () => setPanel(!panelOpen);
+
+let panelAt = 0, bufTxt = '';
+function panelTick(now) {
+  if (!panelOpen || now - panelAt < 0.33) return;
+  panelAt = now;
+  refreshScene(false);
+  const inst = activeSyn(), s = slots[active];
+  const t = (inst && s.canvas && s.canvas.width)
+    ? s.canvas.width + '×' + s.canvas.height + '  ·  cap ' + Math.round(inst.maxDim) + 'px'
+    : '—  (not a syn scene)';
+  if (t !== bufTxt) { bufTxt = t; bufEl.textContent = 'buffer  ' + t; }
+}
+
+loadPrefs();
+applyAudio();
+applyColor();
+buildGlobals();
+layoutPanel();
+addEventListener('resize', layoutPanel);
+if (PREFS.open || PANEL_FORCE) setPanel(true);
+
+/* --------------------------------------------------------- fullscreen/keys */
+const isImmersive = () => document.body.classList.contains('immersive');
+function setImmersive(on) {
+  document.body.classList.toggle('immersive', on);
+  $('fullBtn').classList.toggle('toggled', on);
+}
+function enterFullscreen() {
+  setImmersive(true);
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req) { try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+}
+function exitFullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  }
+  setImmersive(false);
+}
+$('fullBtn').onclick = () => { isImmersive() ? exitFullscreen() : enterFullscreen(); };
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) setImmersive(false);
+});
+document.addEventListener('webkitfullscreenchange', () => {
+  if (!document.webkitFullscreenElement) setImmersive(false);
+});
+
+let autoOn = false, autoAt = 0;
+const AUTO_SECS = 20;
+$('autoBtn').onclick = () => {
+  autoOn = !autoOn;
+  autoAt = performance.now() / 1000;
+  $('autoBtn').classList.toggle('toggled', autoOn);
+};
+
+/* The panel is full of focusable widgets, and gallery nav is bare single-key
+   shortcuts — so a focused slider would otherwise both move AND flip demos.
+   The rule: a widget only gets the keys it actually uses (arrows, Home/End,
+   page, space/enter); a <select> gets everything, because it type-aheads on
+   letters. F / M / A / C / the digits stay global whatever has focus. */
+const WIDGET_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+  'Home', 'End', 'PageUp', 'PageDown', ' ', 'Enter']);
+
+addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  const tag = e.target && e.target.tagName;
+  if (k !== 'Escape') {
+    if (tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (tag === 'INPUT' && WIDGET_KEYS.has(k)) return;
+  }
+  if (k === 'Escape') { if (isImmersive()) exitFullscreen(); return; }
+  if (k === 'c' || k === 'C') { setPanel(!panelOpen); return; }
+  if (k === 'ArrowRight') { select((active + 1) % DEMOS.length); return; }
+  if (k === 'ArrowLeft') { select((active - 1 + DEMOS.length) % DEMOS.length); return; }
+  if (k === 'f' || k === 'F') { isImmersive() ? exitFullscreen() : enterFullscreen(); return; }
+  if (k === 'm' || k === 'M') { $('micBtn').click(); return; }
+  if (k === 'a' || k === 'A') { $('autoBtn').click(); return; }
+  if (k === 'p' || k === 'P') { $('pulseBtn').click(); return; }
+  const i = KEYS.indexOf(k);
+  if (i >= 0) select(i);
+});
+
+/* ============================================================== bench mode
+   ==========================================================================
+   A URL-driven sweep over (scene x quality). The only thing it adds to the
+   render path is one array store per frame while `benchOn` is set — the
+   samples come from tick()'s own unclamped frame delta, so what is recorded is
+   the real rAF interval, not a wall-clock estimate made from outside it.
+
+   Frame TIME is the signal here, deliberately. Headless Chrome's rAF is not
+   vsync-locked and has been measured running at ~120 Hz, so the fps that falls
+   out of these numbers means nothing; the per-frame cost it takes to get there
+   is what ranks scenes and quality settings against each other.
+
+   The step timing (warm-up, measurement window) is driven by setTimeout rather
+   than a per-frame promise chain, so the measured loop allocates nothing. */
+const benchSamples = new Float64Array(60000);   // ~8 min at 120 Hz, allocated once
+let benchOn = false, benchN = 0;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function benchStats() {
+  if (!benchN) return { frames: 0 };
+  const a = benchSamples.slice(0, benchN).sort();
+  let sum = 0;
+  for (let i = 0; i < benchN; i++) sum += a[i];
+  const at = (q) => a[Math.min(benchN - 1, Math.max(0, Math.round(q * (benchN - 1))))];
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  return {
+    frames: benchN,
+    mean_ms: r3(sum / benchN),
+    p50_ms: r3(at(0.50)),
+    p95_ms: r3(at(0.95)),
+    max_ms: r3(a[benchN - 1]),
+    min_ms: r3(a[0]),
+    // context only — see the note above about headless rAF
+    fps_from_mean: r3(1000 / (sum / benchN)),
+  };
+}
+
+/* Resolve once the slot is loaded AND (for a syn scene) its shaders are
+   compiled or it has given up. */
+async function benchWaitReady(i, timeoutSec) {
+  const t0 = performance.now();
+  for (;;) {
+    const s = slots[i];
+    if (s.status === 'error') return 'load failed: ' + String(s.err).split('\n')[0];
+    if (s.status === 'ok') {
+      const inst = synInst(s);
+      if (!inst) return null;                       // native demo: ready on construction
+      if (inst.failed) return 'scene failed to compile';
+      if (inst.ready && s.canvas.width > 0) return null;
+    }
+    if (performance.now() - t0 > timeoutSec * 1000) return 'timed out after ' + timeoutSec + 's';
+    await sleep(100);
+  }
+}
+
+async function runBench() {
+  const raw = (qp.get('scenes') || '').trim();
+  const names = /^ALL$/i.test(raw)
+    ? DEMOS.map((d) => d.name)
+    : raw.split(',').map((s) => s.trim().toUpperCase().replace(/\*+$/, '')).filter(Boolean);
+  const quals = (qp.get('quality') || '1').split(',')
+    .map((s) => parseFloat(s)).filter((q) => Number.isFinite(q) && q > 0);
+  if (!quals.length) quals.push(1);
+
+  const results = [];
+  for (const name of names) {
+    const i = DEMOS.findIndex((d) => d.name === name);
+    if (i < 0) { results.push({ scene: name, error: 'not in the manifest' }); continue; }
+    for (const q of quals) {
+      PREFS.quality = q;
+      applyQuality();
+      select(i);
+      applyQuality();   // again: the slot may have only just been created
+      const err = await benchWaitReady(i, 30);
+      const s = slots[i], inst = synInst(s);
+      if (err) { results.push({ scene: name, quality: q, error: err }); continue; }
+      await sleep(BENCH_WARM * 1000);
+      benchN = 0;
+      benchOn = true;
+      await sleep(BENCH_SECS * 1000);
+      benchOn = false;
+      const st = benchStats();
+      results.push({
+        scene: name,
+        quality: q,
+        kind: inst ? 'syn' : 'native',
+        maxDim: inst ? inst.maxDim : null,
+        baseMaxDim: inst ? inst.__baseMaxDim : null,
+        buffer_w: s.canvas.width,
+        buffer_h: s.canvas.height,
+        ...st,
+      });
+      console.log('[bench]', name, q + 'x', s.canvas.width + 'x' + s.canvas.height,
+                  JSON.stringify(st));
+    }
+  }
+
+  const payload = {
+    started: new Date().toISOString(),
+    secs: BENCH_SECS,
+    warmup_secs: BENCH_WARM,
+    qualities: quals,
+    dpr: window.devicePixelRatio || 1,
+    viewport: [innerWidth, innerHeight],
+    audio_mode: engine.mode,
+    ua: navigator.userAgent,
+    results,
+  };
+  try {
+    await fetch('http://localhost:' + BENCH_OUT + '/bench', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload, null, 2),
+    });
+  } catch (e) {
+    console.error('[bench] POST failed', e);
+  }
+  document.title = 'BENCH_DONE';
+  console.log('[bench] done, ' + results.length + ' measurements');
+}
+
+/* --------------------------------------------------------------- main loop */
+let lastNow = performance.now() / 1000;
+let fpsAcc = 0, fpsN = 0, fpsAt = lastNow;
+
+function tick() {
+  const now = performance.now() / 1000;
+  const rawMs = (now - lastNow) * 1000;   // unclamped, for bench mode
+  const dt = Math.min(now - lastNow, 0.1);
+  lastNow = now;
+  if (benchOn && benchN < benchSamples.length) benchSamples[benchN++] = rawMs;
+
+  const f = engine.update(now);      // one engine, one update, every frame
+  applySim(f, dt);
+
+  const s = slots[active];
+  if (s && s.status === 'ok' && s.inst) {
+    try { s.inst.render(f, now, dt); }
+    catch (err) { fail(active, err); }
+    captureTick(now, s.canvas, DEMOS[active].name);   // right after render(), see above
+  }
+
+  // chord readout
+  const cname = f.chord ? f.chord.name : '';
+  $('hudChord').textContent = cname
+    ? cname + '  ·  lvl ' + f.level.toFixed(2) + (f.mode === 'sim' ? '  ·  idle sim' : '')
+    : (f.mode === 'sim' ? 'idle sim' : '');
+
+  // fps, averaged over half a second
+  fpsAcc += dt; fpsN++;
+  if (now - fpsAt > 0.5) {
+    $('fps').textContent = (fpsN / fpsAcc).toFixed(0) + ' fps';
+    fpsAcc = 0; fpsN = 0; fpsAt = now;
+  }
+
+  if (autoOn && now - autoAt > AUTO_SECS) {
+    autoAt = now;
+    select((active + 1) % DEMOS.length);
+  }
+
+  panelTick(now);   // throttled to 3 Hz inside, and a no-op while closed
+
+  requestAnimationFrame(tick);
+}
+
+/* #name or #4 in the URL opens straight on that demo (handy for a projector
+   machine, and for reloading the one you are iterating on) */
+function initialIndex() {
+  // a trailing '*' is display sugar on the media-gated scenes; #SYN_HEXTUNNEL
+  // and #SYN_HEXTUNNEL* have to land in the same place
+  const h = decodeURIComponent(location.hash.replace(/^#/, ''))
+    .trim().toUpperCase().replace(/\*+$/, '');
+  if (!h) return 0;
+  const byName = DEMOS.findIndex((d) => d.name === h);
+  if (byName >= 0) return byName;
+  const n = parseInt(h, 10);
+  return (n >= 1 && n <= DEMOS.length) ? n - 1 : 0;
+}
+select(initialIndex());
+addEventListener('hashchange', () => select(initialIndex()));
+requestAnimationFrame(tick);
+
+// bench mode drives selection itself; give the page a beat to settle first
+if (BENCH) setTimeout(() => { runBench().catch((e) => console.error('[bench]', e)); }, 600);
+</script>
+</body>
+</html>
