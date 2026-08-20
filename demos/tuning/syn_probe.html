@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>syn scene probe</title>
+<style>
+  body { margin: 0; background: #04070a; color: #cfeee2;
+         font: 12px "IBM Plex Mono", monospace; }
+  #cv { display: block; width: 480px; height: 270px; }
+  #log { padding: 8px; white-space: pre; font-size: 11px; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="log">probe idle</div>
+
+<script type="module">
+'use strict';
+
+/* demos/tuning/syn_probe.html — batch triage for the imported Synesthesia scenes
+   ============================================================================
+   Walks the whole syn manifest in one browser session and, for each scene,
+   answers the only two questions a bulk import can answer automatically:
+
+       does it compile, and does it put moving, non-black pixels on screen?
+
+   Each scene gets a fresh SynScene on a shared canvas, WARMUP + SAMPLE frames
+   of the gallery's own idle "sim pulse" audio frame, and a readPixels of the
+   result. It records mean luma, the fraction of non-black pixels, spatial
+   variance (a flat fill is not a picture) and the mean absolute difference
+   between two samples several frames apart (motion). Results are POSTed one at
+   a time to demos/tuning/probe_server.py, so a scene that hangs the GPU still
+   leaves everything before it on disk.
+
+   Run it through demos/tuning/syn_probe.sh — never unmuted: the harness shares
+   the gallery's engine and would happily play audio.
+
+   Query params:
+     ?only=NAME,NAME   probe just these manifest names
+     ?from=N&count=M   probe a slice of the roster (for splitting long runs)
+     ?warmup=N&frames=N&media=1&audio=1
+     ?shots=1          also POST each scene's final frame as a PNG
+   ========================================================================== */
+
+import { AnalysisEngine } from '../../vizier-analysis.js';
+import { SYN_SCENES } from '../syn/syn-manifest.js';
+import { SynScene } from '../syn/syn-runtime.js';
+
+const qp = new URLSearchParams(location.search);
+const HOST = 'http://localhost:8125';
+const WARMUP = parseInt(qp.get('warmup'), 10) || 90;
+const FRAMES = parseInt(qp.get('frames'), 10) || 30;
+const LOAD_TIMEOUT = (parseFloat(qp.get('timeout')) || 20) * 1000;
+const FORCE_MEDIA = qp.get('media') === '1';
+const SHOTS = qp.get('shots') === '1';   // also POST each scene's last frame as a PNG
+
+let cv = document.getElementById('cv');   // reassigned as each scene swaps it in
+const logEl = document.getElementById('log');
+const log = (s) => { logEl.textContent = s; };
+
+let list = SYN_SCENES.slice();
+const only = qp.get('only');
+if (only) {
+  const want = new Set(only.split(',').map((s) => s.trim().toUpperCase()));
+  list = list.filter((d) => want.has(d.name));
+}
+const from = parseInt(qp.get('from'), 10) || 0;
+const count = parseInt(qp.get('count'), 10) || list.length;
+list = list.slice(from, from + count);
+
+/* --- the audio frame ----------------------------------------------------
+   By default: exactly what the gallery hands a demo on an untouched page — the
+   engine's idle shimmer plus the 118 BPM "sim pulse" that lifts level and fakes
+   a beat. Anything black under that is black for a visitor who has not pressed
+   Mic.
+
+   With ?audio=1 the local deck plays instead, for the whole run, and every
+   scene is judged against a real mix. That matters for the ones gated on band
+   hits: the idle sim has no chroma and modest band levels, so a scene that only
+   draws on a snare reads as black without it. Chrome must be launched
+   --mute-audio (syn_probe.sh does); the analyser still sees every sample. */
+const audioEl = document.createElement('audio');
+audioEl.preload = 'none';
+document.body.appendChild(audioEl);
+const USE_AUDIO = qp.get('audio') === '1';
+const engine = new AnalysisEngine({
+  audioEl: USE_AUDIO ? audioEl : null,
+  basePath: '../../waveloop/',
+  onMessage: () => {},
+  onTracksLoaded: () => { if (USE_AUDIO && engine.tracks.length) engine.playTrack(0); },
+});
+if (USE_AUDIO) {
+  engine.loadTracks();
+  audioEl.addEventListener('ended', () => {
+    if (engine.tracks.length) engine.playTrack((engine.currentTrack + 1) % engine.tracks.length);
+  });
+}
+const SIM_BPM = 118;
+let simPhase = 0, simBeat = 0;
+function frameAt(now, dt) {
+  const f = engine.update(now);
+  if (f.mode === 'sim') {
+    simPhase += dt * (SIM_BPM / 60);
+    if (simPhase >= 1) { simPhase -= Math.floor(simPhase); simBeat = 1; }
+    simBeat = Math.max(0, simBeat - dt * 3.2);
+    f.beat = simBeat;
+    f.level = 0.34 + 0.10 * Math.sin(simPhase * Math.PI * 2) + 0.14 * simBeat;
+  }
+  return f;
+}
+
+const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
+const blobOf = (cv) => new Promise((r) => cv.toBlob(r, 'image/png'));
+
+/* Console noise is per-scene evidence (a script that threw, an image that 404ed,
+   a NaN uniform), so it is captured and attributed rather than left in the log. */
+let sink = null;
+for (const level of ['warn', 'error']) {
+  const orig = console[level].bind(console);
+  console[level] = (...a) => {
+    if (sink) sink.push(level + ': ' + a.map(fmt).join(' ').slice(0, 9000));
+    orig(...a);
+  };
+}
+function fmt(x) {
+  if (x instanceof Error) return x.message;
+  if (typeof x === 'object' && x) { try { return JSON.stringify(x).slice(0, 200); } catch (e) { return '[obj]'; } }
+  return String(x);
+}
+
+function stats(px, w, h) {
+  let sum = 0, sum2 = 0, nonBlack = 0, maxL = 0;
+  const n = w * h;
+  const luma = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    const l = (px[o] * 0.299 + px[o + 1] * 0.587 + px[o + 2] * 0.114) / 255;
+    luma[i] = l;
+    sum += l; sum2 += l * l;
+    if (l > 0.02) nonBlack++;
+    if (l > maxL) maxL = l;
+  }
+  const mean = sum / n;
+  return { mean, std: Math.sqrt(Math.max(0, sum2 / n - mean * mean)),
+           nonBlack: nonBlack / n, max: maxL, luma };
+}
+
+async function probe(d) {
+  const notes = [];
+  sink = notes;
+  const out = { name: d.name, scene: d.scene, maxDim: d.maxDim, media: !!d.media };
+  const t0 = performance.now();
+
+  // one canvas per scene: a WebGL context is bound to a canvas for life, so
+  // reusing one would hand scene N+1 scene N's context and program cache
+  // the previous scene's canvas is swapped OUT of the document here, and `cv`
+  // has to follow it: replaceWith() on an already-detached node is a silent
+  // no-op, which would leave every scene after the first measuring 0x0 and
+  // reading back an untouched default-sized backbuffer
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'display:block;width:480px;height:270px';
+  canvas.id = 'cv';
+  cv.replaceWith(canvas);
+  cv = canvas;
+
+  let inst = null;
+  try {
+    inst = new SynScene(canvas, {
+      dir: '../syn/scenes/' + d.scene,
+      maxDim: d.maxDim || 768,
+      media: FORCE_MEDIA || !!d.media,
+    });
+  } catch (err) {
+    out.status = 'construct-threw';
+    out.error = String(err && (err.message || err));
+    sink = null;
+    return out;
+  }
+
+  const deadline = performance.now() + LOAD_TIMEOUT;
+  while (!inst.ready && !inst.failed && performance.now() < deadline) await nextFrame();
+  out.loadMs = Math.round(performance.now() - t0);
+
+  if (inst.failed) {
+    out.status = 'failed';
+    out.error = (inst._pendingMessage || []).slice(1).join(' | ').slice(0, 9000);
+    try { inst.dispose(); } catch (e) {}
+    sink = null;
+    out.notes = notes.slice(0, 8);
+    return out;
+  }
+  if (!inst.ready) {
+    out.status = 'timeout';
+    out.error = 'not ready after ' + Math.round(LOAD_TIMEOUT / 1000) + 's';
+    sink = null;
+    out.notes = notes.slice(0, 8);
+    return out;
+  }
+
+  let now = performance.now() / 1000;
+  let early = null, late = null, shot = null;
+  const gl = inst.gl;
+  const total = WARMUP + FRAMES;
+  for (let i = 0; i < total; i++) {
+    await nextFrame();
+    const t = performance.now() / 1000;
+    const dt = Math.min(Math.max(t - now, 1e-3), 0.1);
+    now = t;
+    try { inst.render(frameAt(t, dt), t, dt); }
+    catch (err) {
+      out.status = 'render-threw';
+      out.error = String(err && (err.message || err)).slice(0, 400);
+      try { inst.dispose(); } catch (e) {}
+      sink = null;
+      out.notes = notes.slice(0, 8);
+      return out;
+    }
+    // readPixels has to be in the same synchronous stretch as the draw:
+    // preserveDrawingBuffer is off, so the backbuffer is gone after compositing
+    const grab = (i === WARMUP) || (i === total - 1);
+    if (grab) {
+      const w = canvas.width, h = canvas.height;
+      const px = new Uint8Array(w * h * 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      const s = stats(px, w, h);
+      if (i === WARMUP) early = s; else late = s;
+      out.w = w; out.h = h;
+      // toBlob snapshots synchronously even though the encode is async, so it
+      // has to happen here too — after compositing the backbuffer is gone
+      if (SHOTS && i === total - 1) shot = blobOf(canvas);
+    }
+  }
+
+  if (shot) {
+    const blob = await shot;
+    if (blob) {
+      await fetch(HOST + '/shot?name=' + encodeURIComponent(d.name), {
+        method: 'POST', headers: { 'Content-Type': 'image/png' }, body: blob,
+      }).catch(() => {});
+    }
+  }
+
+  const glErr = gl.getError();
+  if (glErr) out.glError = glErr;
+
+  let motion = 0;
+  if (early && late) {
+    let acc = 0;
+    for (let i = 0; i < late.luma.length; i++) acc += Math.abs(late.luma[i] - early.luma[i]);
+    motion = acc / late.luma.length;
+  }
+  const s = late || early || { mean: 0, std: 0, nonBlack: 0, max: 0 };
+  out.mean = +s.mean.toFixed(4);
+  out.std = +s.std.toFixed(4);
+  out.nonBlack = +s.nonBlack.toFixed(4);
+  out.max = +s.max.toFixed(4);
+  out.motion = +motion.toFixed(5);
+  out.status = (s.nonBlack < 0.01 || s.max < 0.04) ? 'black'
+             : (s.std < 0.012 && motion < 0.0015) ? 'flat'
+             : 'ok';
+  out.notes = notes.slice(0, 8);
+  try { inst.dispose(); } catch (e) {}
+  sink = null;
+  return out;
+}
+
+async function main() {
+  // give the deck a moment to load and start before judging the first scene
+  if (USE_AUDIO) {
+    const until = performance.now() + 12000;
+    while (performance.now() < until && engine.update(performance.now() / 1000).mode !== 'local') {
+      await nextFrame();
+    }
+  }
+  const results = [];
+  for (let i = 0; i < list.length; i++) {
+    const d = list[i];
+    log(`[${i + 1}/${list.length}] ${d.name} ...`);
+    let r;
+    try { r = await probe(d); }
+    catch (err) { r = { name: d.name, scene: d.scene, status: 'probe-threw',
+                        error: String(err && (err.message || err)) }; }
+    results.push(r);
+    log(`[${i + 1}/${list.length}] ${d.name}: ${r.status}`);
+    await fetch(HOST + '/result', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(r),
+    }).catch(() => {});
+  }
+  await fetch(HOST + '/done', { method: 'POST' }).catch(() => {});
+  log('done: ' + results.length + ' scenes');
+  document.title = 'probe done';
+}
+main();
+</script>
+</body>
+</html>
