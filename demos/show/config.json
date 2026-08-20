@@ -1,0 +1,15 @@
+{
+  "_note": "Follower settings for demos/show/follower_server.py and demos.html?show=1. audio_dir is where the show wavs live on THIS machine (absolute path, or relative to the repo root); the page asks for them by basename via GET /show/audio/<file>, searched recursively, so the leader's preshow/ opening-set/ dj-set/ split does not matter. The default points at the show-view checkout beside this one, which is true on both m1 and neo. audible MUST stay false on the TV machine — m1 runs the show's audio, neo makes no sound; the page still analyses the signal because the mute is a GainNode at 0 AFTER the analyser tap, not a muted element.",
+
+  "port": 8123,
+  "audio_dir": "../show-view/party-mountain-2026-tracks",
+  "audible": false,
+  "drift_seconds": 0.25,
+
+  "logo": {
+    "src": "arche-logos/Arche_A-Logo_17.png",
+    "scale": 0.4,
+    "opacity": 0.9,
+    "breathe": true
+  }
+}

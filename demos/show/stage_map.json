@@ -1,0 +1,17 @@
+{
+  "_note": "show-view stage -> vizier scene. THE cue list: the follower resolves it, show-view only displays it (GET /show/status). Stages not listed fall through to `default`. Scene names must match the gallery manifest exactly (demos.html DEMOS + demos/syn/syn-manifest.js); GET /show/scenes lists them with an `available` flag. Confirmed cues: preshow -> TEST_CARD (no logo), opener -> NEBULA + logo. Everything else below is a placeholder awaiting the real cue list.",
+
+  "default": { "scene": "TEST_CARD", "logo": false },
+
+  "stages": {
+    "idle":         { "scene": "TEST_CARD", "logo": false },
+    "armed":        { "scene": "TEST_CARD", "logo": false },
+    "preshow":      { "scene": "TEST_CARD", "logo": false },
+    "hold_opener":  { "scene": "TEST_CARD", "logo": true  },
+    "opener":       { "scene": "NEBULA",    "logo": true  },
+    "intermission": { "scene": "TEST_CARD", "logo": true  },
+    "hold_main":    { "scene": "TEST_CARD", "logo": true  },
+    "main":         { "scene": "NEBULA",    "logo": false },
+    "done":         { "scene": "TEST_CARD", "logo": false }
+  }
+}

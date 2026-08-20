@@ -582,8 +582,14 @@ async function loadTracks() {
   }
 }
 
-let actx = null, localAna = null, localDelay = null;
+let actx = null, localAna = null, localDelay = null, localOut = null;
 let currentTrack = -1;
+
+/* Output attenuation, applied AFTER the analyser tap (see ensureLocalGraph).
+   A show follower plays the set purely to analyse it and must stay silent, so
+   it sets this to 0 — element.muted / element.volume would starve the
+   MediaElementSource in some browsers and kill the analysis with it. */
+let outGainValue = 1;
 
 // the visual pipeline trails the signal; delaying only the audible branch by
 // this much lines the two up. The analysers keep tapping the undelayed source.
@@ -596,8 +602,11 @@ function ensureLocalGraph() {
   localAna = makeAnalysers(actx, src);   // analysers tap the undelayed signal
   localDelay = actx.createDelay(0.5);
   localDelay.delayTime.value = syncDelaySec;
+  localOut = actx.createGain();
+  localOut.gain.value = outGainValue;
   src.connect(localDelay);
-  localDelay.connect(actx.destination);
+  localDelay.connect(localOut);
+  localOut.connect(actx.destination);
 }
 
 function localPlaying() {
@@ -632,6 +641,17 @@ function playTrack(i) {
 function addLocalFile(file) {
   const url = URL.createObjectURL(file);
   const idx = TRACKS.push({ name: file.name, url }) - 1;
+  onTracksLoaded(TRACKS);
+  return idx;
+}
+
+// same, for a track the host already has a URL for (the show follower fetches
+// the leader's wavs over the LAN). Idempotent: re-adding a known URL returns
+// the existing index rather than growing the deck on every stage change.
+function addTrackUrl(name, url) {
+  const hit = TRACKS.findIndex((t) => t.url === url);
+  if (hit >= 0) return hit;
+  const idx = TRACKS.push({ name: name || url, url }) - 1;
   onTracksLoaded(TRACKS);
   return idx;
 }
@@ -1081,6 +1101,7 @@ export class AnalysisEngine {
   loadTracks() { return loadTracks(); }
   playTrack(i) { playTrack(i); }
   addLocalFile(file) { return addLocalFile(file); }   // user-picked file -> deck index
+  addTrackUrl(name, url) { return addTrackUrl(name, url); }
   pause() { if (audioEl) audioEl.pause(); }
   get tracks() { return TRACKS; }
   get currentTrack() { return currentTrack; }
@@ -1098,6 +1119,13 @@ export class AnalysisEngine {
     if (localDelay) localDelay.delayTime.value = sec;
   }
   get syncDelay() { return syncDelaySec; }
+  /* Attenuate the AUDIBLE branch only — the analysers tap ahead of it, so a
+     gain of 0 leaves every frame field live on a silent machine. */
+  setOutputGain(g) {
+    outGainValue = Math.max(0, Number(g) || 0);
+    if (localOut) localOut.gain.value = outGainValue;
+  }
+  get outputGain() { return outGainValue; }
 }
 
 /* ----------------------------------------------------------------------------

@@ -239,6 +239,38 @@
   body.immersive #msg { display: none; }
   body.immersive #hud { opacity: 0.35; transition: opacity 0.4s; }
 
+  /* --- show mode (?show=1): a TV, not a gallery ---------------------------
+     Everything readable is gone; only the scene, the logo layer and the error
+     card survive. Inert without the class, which only show-client.js sets. */
+  body.show #hud, body.show #keys, body.show #msg { display: none; }
+  body.show { cursor: none; }
+
+  /* Logo layer: an <img> above the canvas, below #card. Scale/opacity come
+     from demos/show/config.json via the follower, so the sizing is a config
+     edit rather than a CSS edit. The breathe is a slow scale+opacity cycle —
+     deliberately under 3% so it reads as alive, not as animation. */
+  #showlogo {
+    position: fixed; inset: 0; z-index: 3;
+    display: none; align-items: center; justify-content: center;
+    pointer-events: none;
+    opacity: 0; transition: opacity 1.6s ease-in-out;
+    --logo-scale: 0.34; --logo-opacity: 0.9;
+  }
+  body.show #showlogo { display: flex; }
+  #showlogo.on { opacity: var(--logo-opacity); }
+  #showlogo img {
+    width: calc(var(--logo-scale) * 100vmin); height: auto;
+    filter: drop-shadow(0 0 40px rgba(0,0,0,0.55));
+  }
+  #showlogo.breathe img { animation: breathe 9s ease-in-out infinite; }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1);     opacity: 0.92; }
+    50%      { transform: scale(1.028); opacity: 1;    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #showlogo.breathe img { animation: none; }
+  }
+
   @media (max-width: 760px) {
     #hud { top: 96px; }
     #hud .name { font-size: 32px; }
@@ -252,6 +284,7 @@
 
 <div id="stage"></div>
 <div id="crt"></div>
+<div id="showlogo"><img id="showlogoimg" alt=""></div>
 
 <header>
   <span class="title">vizier // demos</span>
@@ -408,6 +441,16 @@ const AUTOPLAY = qp.get('play') === '1';
 /* ?panel=1 opens the control panel on load (for screenshots and for a
    projector machine that wants it up from the start). */
 const PANEL_FORCE = qp.get('panel') === '1';
+
+/* ------------------------------------------------------------- show mode
+   demos.html?show=1 turns the gallery into a follower for a show-view rig:
+   it goes immersive, long-polls demos/show/follower_server.py for scene /
+   logo / transport commands, and drives this page's own deck from them. All
+   of it lives in demos/show/show-client.js, dynamically imported at the very
+   bottom of this script — without ?show=1 the module is never fetched and
+   not one line of it runs. */
+const SHOW = qp.get('show') === '1';
+let showClient = null;
 
 /* ------------------------------------------------------------- bench mode
    demos.html?bench=1&scenes=SYN_A,SYN_B&quality=0.75,1,1.5&secs=6&out=8124
@@ -1307,6 +1350,7 @@ function tick() {
 
   const f = engine.update(now);      // one engine, one update, every frame
   applySim(f, dt);
+  if (showClient) showClient.noteFrame(f);   // null unless ?show=1
 
   const s = slots[active];
   if (s && s.status === 'ok' && s.inst) {
@@ -1357,6 +1401,33 @@ requestAnimationFrame(tick);
 
 // bench mode drives selection itself; give the page a beat to settle first
 if (BENCH) setTimeout(() => { runBench().catch((e) => console.error('[bench]', e)); }, 600);
+
+/* ---------------------------------------------------------------- show mode
+   Everything the follower client is allowed to touch, passed in explicitly —
+   the module never reaches into this scope, so what a show command can do to
+   the gallery is exactly this list. */
+if (SHOW) {
+  import('./demos/show/show-client.js').then(({ initShow }) => {
+    showClient = initShow({
+      engine,
+      audioEl,
+      selectByName(name) {
+        const h = String(name || '').trim().toUpperCase().replace(/\*+$/, '');
+        const i = DEMOS.findIndex((d) => d.name === h);
+        if (i < 0) return false;
+        select(i);
+        return true;
+      },
+      activeName: () => (active >= 0 ? DEMOS[active].name : null),
+      setImmersive,
+      notice: showCard,
+      clearNotice: hideCard,
+    });
+  }).catch((err) => {
+    console.error('[show]', err);
+    showCard('show client failed', String(err && err.stack || err));
+  });
+}
 </script>
 </body>
 </html>

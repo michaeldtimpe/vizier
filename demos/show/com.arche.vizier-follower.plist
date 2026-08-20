@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The follower control + static server on the TV machine.
+
+     Installed by demos/show/deploy-neo.sh; by hand it is:
+       cp demos/show/com.arche.vizier-follower.plist ~/Library/LaunchAgents/
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.arche.vizier-follower.plist
+     Restart after a deploy:
+       launchctl kickstart -k gui/$(id -u)/com.arche.vizier-follower
+
+     ~/arche/vizier, NOT ~/Downloads/vizier: macOS TCC will not let a
+     launchd-spawned process read ~/Downloads without a consent dialog, and on
+     a headless TV machine nobody is there to answer it — the process blocks
+     or dies with "Operation not permitted". Same reason for --audio-dir: the
+     show wavs are hard-linked out of ~/Downloads/show-view into
+     ~/arche/show-audio (same bytes, allowed path). deploy-neo.sh does both.
+
+     Paths go through $HOME on purpose — the same file works whatever the
+     account is called. PATH is set explicitly because a LaunchAgent does not
+     inherit a login shell's, and the shebang needs a python3 on it. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>              <string>com.arche.vizier-follower</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>exec "$HOME/arche/vizier/demos/show/follower_server.py" --audio-dir "$HOME/arche/show-audio"</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>RunAtLoad</key>          <true/>
+  <key>KeepAlive</key>          <true/>
+  <key>ThrottleInterval</key>   <integer>5</integer>
+  <key>StandardOutPath</key>    <string>/tmp/vizier-follower.log</string>
+  <key>StandardErrorPath</key>  <string>/tmp/vizier-follower.log</string>
+</dict>
+</plist>

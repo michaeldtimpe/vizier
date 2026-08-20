@@ -143,6 +143,37 @@ server-side track data. The optional deck reads a track layout under the
 directory named by the engine's `basePath` option (default `waveloop/`):
 `waveloop/tracks.json`, `waveloop/audio/`, `waveloop/analysis/*.vqt.gz`.
 
+## Show mode — following a show-view rig (`demos/show/`)
+
+`demos.html?show=1` turns the gallery into a follower for the ARCHE show
+console (`../show-view`, a separate repo) running on another machine. The
+leader's browser drives it over the LAN; nothing here reaches back.
+
+```sh
+demos/show/follower_server.py          # serves this repo on :8123 + /show/*
+open 'http://localhost:8123/demos.html?show=1'
+demos/show/deploy-neo.sh neo           # push + (re)load both LaunchAgents
+```
+
+- **`follower_server.py`** replaces `python3 -m http.server` on the TV machine:
+  same static serving, plus a desired-state box the leader POSTs to
+  (`/show/stage`, `/show/scene`, `/show/sync`) and the page long-polls
+  (`/show/events`). CORS-open, stdlib only. `--audio-dir` points it at the show
+  wavs, which it serves by basename with Range support.
+- **`stage_map.json`** is the cue list — show-view sends a STAGE NAME and this
+  file decides the scene and whether the logo is up. It is the only copy:
+  show-view's VISUALS menu displays whatever `/show/status` reports.
+- **`config.json`** — `audible` must stay `false` on the TV machine. The mute is
+  a GainNode at 0 *after* the analyser tap (`AnalysisEngine.setOutputGain`), so
+  the scenes stay fully reactive while the machine is silent; `element.muted`
+  would have starved the analyser instead.
+- **`?show=1` is inert otherwise** — `demos/show/show-client.js` is dynamically
+  imported only when the flag is present, and the logo layer is `display:none`
+  without it.
+- The LaunchAgents run out of `~/arche/vizier`, not `~/Downloads/vizier`: macOS
+  TCC blocks launchd-spawned processes from the Downloads folder. `deploy-neo.sh`
+  maintains that copy and hard-links the wavs somewhere readable.
+
 ## Notes
 
 - The default data directory is still `waveloop/` (the engine's `basePath`

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Kiosk Chrome on the TV machine: fullscreen gallery in follower mode.
+
+     Install (no reboot needed):
+       cp demos/show/com.arche.vizier-kiosk.plist ~/Library/LaunchAgents/
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.arche.vizier-kiosk.plist
+     Restart it after a code change:
+       launchctl kickstart -k gui/$(id -u)/com.arche.vizier-kiosk
+
+     --mute-audio is BELT AND BRACES and must stay: the show's sound comes out
+     of the leader machine and this one is silent. The page already runs its
+     deck through a GainNode at 0 (demos/show/config.json "audible": false),
+     and this flag means even a bad config edit cannot make the TV speak. It
+     mutes OUTPUT only — the WebAudio analyser still gets the signal, so the
+     scenes stay fully reactive.
+
+     Its own --user-data-dir keeps this out of the way of any Chrome the
+     operator opens by hand. The leading wait loop is what makes this
+     independent of launchd's startup order: it simply does not open until the
+     follower is answering. KeepAlive brings it back if it is closed or
+     crashes.
+
+     The osascript activate afterwards is NOT decoration. --kiosk on macOS
+     enters fullscreen through the window server, and a Chrome launched by
+     launchd is not the active app, so it stays at Chrome's default 1200x720
+     window (measured on neo: the page reported view 1200x720 on a 1920x1080
+     screen). Activating it makes kiosk take: view == screen. Chrome runs in
+     the background here, not exec'd, so the shell survives to do it — and
+     `wait` keeps this process alive for KeepAlive to watch. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>              <string>com.arche.vizier-kiosk</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>until /usr/bin/curl -sf -o /dev/null http://localhost:8123/show/status; do sleep 1; done; "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --kiosk --start-fullscreen --mute-audio --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --disable-features=Translate,MediaRouter --user-data-dir="$HOME/Library/Application Support/arche-kiosk" "http://localhost:8123/demos.html?show=1#TEST_CARD" & CHROME=$!; sleep 5; /usr/bin/osascript -e 'tell application "Google Chrome" to activate' >/dev/null 2>&1 || true; wait $CHROME</string>
+  </array>
+  <key>RunAtLoad</key>          <true/>
+  <key>KeepAlive</key>          <true/>
+  <key>ThrottleInterval</key>   <integer>10</integer>
+  <key>StandardOutPath</key>    <string>/tmp/vizier-kiosk.log</string>
+  <key>StandardErrorPath</key>  <string>/tmp/vizier-kiosk.log</string>
+</dict>
+</plist>
