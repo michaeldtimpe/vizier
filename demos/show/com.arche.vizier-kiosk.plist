@@ -21,6 +21,14 @@
      follower is answering. KeepAlive brings it back if it is closed or
      crashes.
 
+     --disable-session-crashed-bubble and --hide-crash-restore-bubble both
+     have to stay: every redeploy/reload kills this Chrome instance (killed
+     by launchctl bootout, or by the operator, or by KeepAlive racing a
+     display change), which Chrome always sees as an unclean exit, so
+     without these it would show a "Chrome didn't shut down correctly" /
+     "Restore pages?" bubble over the kiosk on literally every single
+     launch, forever, with nobody there to dismiss it.
+
      The osascript activate afterwards is NOT decoration. --start-fullscreen
      on macOS enters a native fullscreen Space through the window server, and
      a Chrome launched by launchd is not the active app, so without this it
@@ -106,7 +114,7 @@ else
     LOG "display picker produced no usable output (raw: $DISPLAY_INFO); launching without explicit window position"
     POS_ARGS=""
 fi
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --start-fullscreen $POS_ARGS --mute-audio --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --disable-features=Translate,MediaRouter --user-data-dir="$HOME/Library/Application Support/arche-kiosk" "http://localhost:8123/demos.html?show=1#TEST_CARD" &amp;
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --start-fullscreen $POS_ARGS --mute-audio --autoplay-policy=no-user-gesture-required --no-first-run --no-default-browser-check --disable-session-crashed-bubble --hide-crash-restore-bubble --disable-features=Translate,MediaRouter --user-data-dir="$HOME/Library/Application Support/arche-kiosk" "http://localhost:8123/demos.html?show=1#TEST_CARD" &amp;
 CHROME=$!
 sleep 5
 /usr/bin/osascript -e 'tell application "Google Chrome" to activate' &gt;/dev/null 2&gt;&amp;1 || true
