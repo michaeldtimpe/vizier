@@ -271,6 +271,32 @@
     #showlogo.breathe img { animation: none; }
   }
 
+  /* TEST_CARD wordmark. The alignment card is what the TV sits on for long
+     stretches while the room is being set up, so it is the one thing the crew
+     — and any early guest — actually spends time reading. Drawn here rather
+     than in the scene because that folder is licensed content, gitignored, and
+     a re-import would silently take the edit with it (the same reasoning that
+     kept the old syn_BPMTri2 pin in the manifest).
+
+     z-index 2 and placed BEFORE #crt in the DOM, so the scanlines and vignette
+     cross the band like they cross the rest of the picture — a label floating
+     above the CRT treatment would read as browser chrome, not as part of the
+     card. Under the logo (3) and the video insert (4). */
+  #testcard {
+    position: fixed; left: 0; right: 0; bottom: 13%; z-index: 2;
+    display: none; justify-content: center; pointer-events: none;
+  }
+  body.show #testcard.on { display: flex; }
+  #testcard span {
+    padding: 0.5em 1.35em;
+    background: #000; border: 1px solid rgba(255,255,255,0.9);
+    color: #fff; font-size: clamp(15px, 3vmin, 40px); font-weight: 600;
+    text-transform: uppercase; white-space: nowrap;
+    /* the tracking is the whole look; text-indent gives back the trailing
+       space letter-spacing adds after the last glyph, so it stays centred */
+    letter-spacing: 0.4em; text-indent: 0.4em;
+  }
+
   /* Video-insert layer: the cue list's "fun visual" clips (moon, dracula) play
      OVER the running scene rather than replacing it, so the return to the
      scene underneath costs nothing — no reload, no recompile, no black frame.
@@ -300,6 +326,7 @@
 <body>
 
 <div id="stage"></div>
+<div id="testcard"><span id="testcardTxt"></span></div>
 <div id="crt"></div>
 <div id="showlogo"><img id="showlogoimg" alt=""></div>
 <video id="showvideo" muted playsinline preload="auto"></video>
@@ -477,6 +504,10 @@ const PANEL_FORCE = qp.get('panel') === '1';
 const SHOW = qp.get('show') === '1';
 let showClient = null;
 
+/* Overlaid on TEST_CARD in show mode only — the alignment card doubles as the
+   house slate while the room fills up. Gallery browsing never shows it. */
+const PM_WORDMARK = 'PARTY MOUNTAIN';
+
 /* ------------------------------------------------------------- bench mode
    demos.html?bench=1&scenes=SYN_A,SYN_B&quality=0.75,1,1.5&secs=6&out=8124
    walks every (scene x quality) pair, warms up, measures rAF frame times, and
@@ -613,6 +644,7 @@ function select(i) {
   if (i === active || i < 0 || i >= slots.length) return;
   if (active >= 0 && slots[active].canvas) slots[active].canvas.style.display = 'none';
   active = i;
+  syncWordmark();   // scene visibility is decided here; the slate follows it
   applyPreset(i);   // the saved look for THIS scene, before it draws a frame
 
   cards.forEach((c, k) => c.classList.toggle('active', k === i));
@@ -638,6 +670,14 @@ function select(i) {
   s.canvas.style.display = 'block';
   safeResize(s);
   activateScene(s);
+}
+
+/* The house slate on the alignment card. Toggled from select() — once per
+   scene change, never per frame — and inert outside show mode. */
+$('testcardTxt').textContent = PM_WORDMARK;   // written once, at load
+function syncWordmark() {
+  $('testcard').classList.toggle('on',
+    SHOW && active >= 0 && DEMOS[active].name === 'TEST_CARD');
 }
 
 /* Both manifest forms resolve to the same thing: a function taking a canvas.
@@ -964,7 +1004,7 @@ function applyPreset(i) {
     const inst = synInst(s);
     if (!inst || (!inst.ready && !inst.failed)) { setTimeout(tryApply, 120); return; }
     if (inst.failed) return;
-    writeControlValues(inst, p.controls);
+    writeControlValues(inst, p.controls, true);
     /* A live palette cue beats a saved gallery look. Doing it HERE rather than
        trusting timer order is the difference between "usually right" and
        right: a later fetchPresets() or a presets_rev refresh re-runs this
@@ -980,10 +1020,17 @@ function applyPreset(i) {
    arrays element-wise, scalars only from numbers, unknown names ignored. The
    preset store, the show's live-control channel and the backdrop's
    construction all need exactly this, and all three must agree about it. */
-function writeControlValues(inst, map) {
+function writeControlValues(inst, map, skipActions) {
   if (!inst || !Array.isArray(inst.controls) || !map || typeof map !== 'object') return;
   for (const c of inst.controls) {
     if (!(c.name in map)) continue;
+    /* A bang/counter is an ACTION, not part of a look. The swap buttons are
+       watched for their number MOVING, so replaying a saved counter on load
+       would fire the action it stands for — PAL_SWAP would randomise away the
+       very palette the preset just restored, on every page load. Presets skip
+       them; the live-control channel deliberately does NOT, because an
+       incrementing counter is exactly how the console presses a button here. */
+    if (skipActions && /bang/i.test(String((c.spec && c.spec.TYPE) || ''))) continue;
     const v = map[c.name];
     if (Array.isArray(c.value) && Array.isArray(v)) {
       for (let k = 0; k < c.value.length; k++) c.value[k] = +v[k] || 0;
@@ -1000,6 +1047,8 @@ async function savePreset(clear) {
   const controls = {};
   if (inst) {
     for (const c of inst.controls) {
+      // an action is not a look — see writeControlValues
+      if (/bang/i.test(String((c.spec && c.spec.TYPE) || ''))) continue;
       controls[c.name] = Array.isArray(c.value) ? c.value.slice() : c.value;
     }
   }
@@ -1060,7 +1109,7 @@ function ensureBackdrop() {
     // it IS NEBULA, so it wears NEBULA's saved look and answers to the same
     // palette cues as the full-screen scene does
     const p = PRESETS.map.NEBULA;
-    if (p && p.controls) writeControlValues(inst, p.controls);
+    if (p && p.controls) writeControlValues(inst, p.controls, true);
     if (showPalette) inst.setPalette(showPalette.palette, 0);
   }).catch((err) => { console.warn('[demos] nebula backdrop import failed', err); });
   return null;
@@ -1102,8 +1151,8 @@ function noteSwap(inst, b) {
   inst._swapSeen = v;
   if (seen === undefined || v <= seen) return;
   // with no backdrop built yet the value is recorded and the press is dropped:
-  // stepping a nebula that is about to be constructed from scratch is a no-op
-  if (b) b.stepPalette();
+  // swapping a nebula that is about to be constructed from scratch is a no-op
+  if (b) b.swapPalette(1.0);
 }
 
 /* ------------------------------------------------------------ show palettes

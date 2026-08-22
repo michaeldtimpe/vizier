@@ -668,9 +668,63 @@ const engine = new AnalysisEngine({ audioEl, onMessage: () => {}, onStatusChange
    Here the operator is matching cue times to what they HEAR, so the heard audio
    must be the playhead exactly. 110 ms of offset is 110 ms of wrong cue times. */
 engine.setSyncDelay(0);
-/* And NOTE what is NOT called: setOutputGain(0). The follower mutes itself
-   because the TV machine makes no sound; this editor is meant to be listened
-   to. */
+
+/* --------------------------------------------------------------- volume
+   The rig is at the venue, wired to the PA. The editor is MEANT to be audible
+   (unlike the TV follower, which sets this to 0 because that machine makes no
+   sound) — but "audible" must not mean "full gain into the house on page load".
+
+   setOutputGain is the right knob, and the only right one:
+     * audioEl.volume would attenuate the element, and in some browsers that
+       starves the MediaElementSource feeding the analysers — the preview would
+       go still exactly when you turn the room down.
+     * a gain in front of the analyser tap has the same problem.
+   setOutputGain sits AFTER the tap (vizier-analysis.js:604-608), so every
+   ChromaFrame field stays live at any volume, including silence. It is also
+   safe to call before the graph exists: ensureLocalGraph reads the stored
+   value when it builds the node (vizier-analysis.js:606), which is what makes
+   "apply before the first playTrack" work at all. */
+const VOL_KEY = 'vizier.timeline.volume';
+const VOL_DEFAULT = 25;                 // first run: quiet enough for a PA
+let volPct = VOL_DEFAULT;
+
+function loadVolume() {
+  try {
+    const raw = localStorage.getItem(VOL_KEY);
+    if (raw != null) {
+      const n = Math.round(Number(raw));
+      if (isFinite(n)) return clamp(n, 0, 100);
+    }
+  } catch (e) { /* private window, blocked storage — the default is fine */ }
+  return VOL_DEFAULT;
+}
+
+function saveVolume(pct) {
+  try { localStorage.setItem(VOL_KEY, String(pct)); } catch (e) { /* not fatal */ }
+}
+
+function applyVolume(pct) {
+  volPct = clamp(Math.round(Number(pct) || 0), 0, 100);
+  // squared taper: a linear slider on a linear gain spends most of its travel
+  // in the top few dB and feels dead at the bottom
+  const gain = Math.pow(volPct / 100, 2);
+  if (typeof engine.setOutputGain === 'function') {
+    engine.setOutputGain(gain);
+  } else {
+    // Older vizier-analysis.js without the post-tap gain node. Works, but the
+    // analysers now see the attenuated signal, so the preview goes quiet with
+    // the room. Better than an editor with no volume control at a PA.
+    audioEl.volume = gain;
+  }
+  const sl = $('volSlider');
+  if (sl && Number(sl.value) !== volPct) sl.value = String(volPct);
+  const t = volPct + '%';
+  if ($('volText').textContent !== t) $('volText').textContent = t;
+}
+
+/* BEFORE anything can call playTrack: a reload must never come back at
+   whatever gain the previous session left, and never at full. */
+applyVolume(loadVolume());
 
 function trackIdx() {
   const st = curStage();
@@ -998,6 +1052,16 @@ function draw() {
   }
   ctx.stroke();
 
+  // ---- snap marker: the track boundary the drag is currently locked to
+  if (snapMark != null) {
+    const sx = Math.round(xOf(snapMark)) + 0.5;
+    ctx.strokeStyle = '#ffb13d'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, chh); ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#ffb13d'; ctx.font = MONO_B;
+    ctx.fillText('SNAP ' + fmtTc(snapMark), sx + 5, Y_MUSIC - 6);
+  }
+
   // ---- playhead
   const px = Math.round(xOf(position())) + 0.5;
   if (px >= -2 && px <= cw + 2) {
@@ -1020,7 +1084,108 @@ function hitAt(x, y) {
   return null;
 }
 
-let drag = null;     // {cue, tok, startAt, startT} | {seek:true}
+/* ------------------------------------------------------------- drag rules
+   Dial-in dragging must not be able to reorder the show by accident: on the
+   night a scene cue was nudged across two of its neighbours without anyone
+   noticing, and the set played its scenes in the wrong order.
+
+   So a plain drag is CLAMPED — a cue may not cross its SAME-TYPE neighbours
+   (scene against scene, palette against palette; video inserts are free, they
+   overlay whatever is underneath and their order means nothing). Reordering is
+   still possible, but it is now a DELIBERATE gesture: hold Shift.
+
+   And because almost every cue wants to land on a song change, dragging SNAPS
+   to the track boundaries underneath — the analysis entries' `start` times, and
+   only those. Never to other cues: cue-to-cue snapping is how you end up with
+   two cues stacked on one frame. Alt/Option turns snapping off for fine work. */
+const SNAP_PX = 10;        // snap radius in PIXELS, so it scales with zoom
+const MIN_GAP = 0.05;      // closest a clamped drag may come to its neighbour
+
+/* The same-type cues either side of `cue`, as times. Resolved against the whole
+   mixed list, so a scene cue is bounded by scene cues however many palette or
+   video cues sit between them. Captured once at pointerdown: a clamped drag can
+   never cross, so the neighbours cannot change mid-gesture. */
+function sameTypeNeighbours(cues, cue) {
+  const type = cueType(cue), self = atOf(cue);
+  let prevAt = -Infinity, nextAt = Infinity;
+  for (const c of cues) {
+    if (c === cue || cueType(c) !== type) continue;
+    const t = atOf(c);
+    if (t <= self) { if (t > prevAt) prevAt = t; }
+    else if (t < nextAt) nextAt = t;
+  }
+  return { prevAt, nextAt };
+}
+
+/* Where the dragged cue actually lands. Snap first, then clamp — and if the
+   clamp moved the value off the boundary, the snap did not happen, so the
+   marker does not lie about where the cue is. */
+function resolveDragAt(drag, rawT, free, noSnap, pps) {
+  let at = rawT, snap = null;
+  if (!noSnap && drag.bounds.length) {
+    const tol = SNAP_PX / pps;
+    let best = null, bd = Infinity;
+    for (const b of drag.bounds) {
+      const d = Math.abs(b - at);
+      if (d < bd) { bd = d; best = b; }
+    }
+    if (best != null && bd <= tol) { at = best; snap = best; }
+  }
+  if (!free) {
+    const lo = drag.prevAt + MIN_GAP, hi = drag.nextAt - MIN_GAP;
+    at = (lo <= hi) ? clamp(at, lo, hi) : (lo + hi) / 2;
+    if (snap != null && Math.abs(at - snap) > 1e-9) snap = null;
+  }
+  return { at, snap };
+}
+
+/* The next cue of the same type, as an OBJECT (sameTypeNeighbours returns
+   times). This is what a scene or palette cue's bar ends at, because spans are
+   derived from neighbours at draw time — a cue has no length of its own. */
+function nextSameType(cues, cue) {
+  const type = cueType(cue), self = atOf(cue);
+  let best = null;
+  for (const c of cues) {
+    if (c === cue || cueType(c) !== type) continue;
+    const t = atOf(c);
+    if (t > self && (best === null || t < atOf(best))) best = c;
+  }
+  return best;
+}
+
+/* Where this cue stops being on screen. A video insert owns its end (`duration`);
+   everything else ends where its successor starts, and null means "runs to the
+   end of the set". */
+function endOfCue(cues, cue) {
+  if (cueType(cue) === 'video') return atOf(cue) + (Number(cue.duration) || 0);
+  const nx = nextSameType(cues, cue);
+  return nx ? atOf(nx) : null;
+}
+
+/* Editing an END is editing something else's START — so say exactly what would
+   be written, and let the caller do it through the normal mutators.
+   Returns {target, field, value} or null when there is nothing to move. */
+function resolveEndEdit(cues, cue, endT) {
+  if (cueType(cue) === 'video') {
+    return { target: cue, field: 'duration',
+             value: Math.max(MIN_GAP, Math.round((endT - atOf(cue)) * 1000) / 1000) };
+  }
+  const nx = nextSameType(cues, cue);
+  if (!nx) return null;                       // last of its type: no end to move
+  const after = nextSameType(cues, nx);
+  const lo = atOf(cue) + MIN_GAP;
+  const hi = after ? atOf(after) - MIN_GAP : Infinity;
+  return { target: nx, field: 'at', value: (lo <= hi) ? clamp(endT, lo, hi) : lo };
+}
+
+function trackBoundaries() {
+  const st = curStage();
+  const an = (st && S.analysis[st.name]) || [];
+  return an.map((e) => e.start);
+}
+
+let drag = null;     // {cue, tok, startAt, startT, bounds, prevAt, nextAt} | {seek:true}
+let snapMark = null; // boundary the drag is currently sitting on, for the marker
 
 cv.addEventListener('pointerdown', (e) => {
   cv.setPointerCapture(e.pointerId);
@@ -1029,7 +1194,14 @@ cv.addEventListener('pointerdown', (e) => {
   const h = hitAt(x, y);
   if (h) {
     select(h.cue);
-    drag = { cue: h.cue, tok: model.beginGesture(), startAt: atOf(h.cue), startT: tOf(x) };
+    const nb = sameTypeNeighbours(model.cues(), h.cue);
+    drag = {
+      cue: h.cue, tok: model.beginGesture(), startAt: atOf(h.cue), startT: tOf(x),
+      bounds: trackBoundaries(),
+      // video inserts are never clamped: nothing depends on their order
+      clamped: cueType(h.cue) !== 'video',
+      prevAt: nb.prevAt, nextAt: nb.nextAt, didFree: false,
+    };
   } else if (y < Y_VIDEO || y >= Y_MUSIC) {
     // ruler, music lane and waveform are all "scrub here"
     drag = { seek: true };
@@ -1045,17 +1217,34 @@ cv.addEventListener('pointermove', (e) => {
   const x = e.clientX - r.left;
   if (!drag) return;
   if (drag.seek) { seek(tOf(x)); return; }
-  // shift = fine drag (a tenth of the pointer's travel)
-  const delta = (tOf(x) - drag.startT) * (e.shiftKey ? 0.1 : 1);
-  model.setCueAt(drag.cue, drag.startAt + delta);
-  syncInspector();
+  // An undo mid-drag replaces every cue object (JSON.parse), so the reference
+  // this gesture is holding can stop being part of the document. Writing to it
+  // would edit an orphan and look like nothing happening; drop the drag.
+  if (model.cues().indexOf(drag.cue) < 0) { drag = null; snapMark = null; needDraw = true; return; }
+  // Shift = free move (the reorder gesture); Alt = snapping off
+  const free = e.shiftKey || !drag.clamped;
+  if (e.shiftKey) drag.didFree = true;
+  const land = resolveDragAt(drag, drag.startAt + (tOf(x) - drag.startT), free, e.altKey, view.pps);
+  snapMark = land.snap;
+  model.setCueAt(drag.cue, land.at);
+  syncInspector();          // the AT field shows the exact snapped time
   needDraw = true;
 });
 
 function endDrag() {
+  if (drag && drag.didFree) {
+    // A free drag IS the reorder: put the array back into time order on drop.
+    // sort() mutates in place and moves the SAME objects, so the selected cue
+    // stays selected by identity across the reorder.
+    model.cues().sort((a, b) => atOf(a) - atOf(b));
+    model.rev++;
+  }
   if (drag && drag.tok) model.endGesture(drag.tok);
   drag = null;
+  snapMark = null;
+  syncInspector();
   refreshChrome();
+  needDraw = true;
 }
 cv.addEventListener('pointerup', endDrag);
 cv.addEventListener('pointercancel', endDrag);
@@ -1120,9 +1309,8 @@ function buildInspector() {
       inp.title = label + ' ' + 'RGB'[i];
       grid.appendChild(inp);
       palInputs[key].push(inp);
-      wire(inp, () => {
-        const c = model.sel;
-        if (!c || cueType(c) !== 'palette') return;
+      wire(inp, (c) => {
+        if (cueType(c) !== 'palette') return;
         if (!c.palette || typeof c.palette !== 'object') c.palette = normPalette(null);
         const arr = Array.isArray(c.palette[key]) ? c.palette[key] : normPalette(c.palette)[key];
         arr[i] = Number(inp.value) || 0;
@@ -1132,45 +1320,48 @@ function buildInspector() {
     }
   }
 
-  wire($('insAt'), null, () => {
-    const c = model.sel;
-    if (!c) return;
+  wire($('insAt'), null, (c) => {
     const v = parseTimecode($('insAt').value);
     if (!isFinite(v)) { flash('could not read that time — use HH:MM:SS.mmm, MM:SS or seconds', true); syncInspector(); return; }
     model.setCueAt(c, v);
     syncInspector(); needDraw = true;
   });
 
-  wire($('insScene'), () => {
-    const c = model.sel; if (!c) return;
+  wire($('insEnd'), null, (c) => {
+    const v = parseTimecode($('insEnd').value);
+    if (!isFinite(v)) { flash('could not read that time — use HH:MM:SS.mmm, MM:SS or seconds', true); syncInspector(); return; }
+    const r = resolveEndEdit(model.cues(), c, v);
+    if (!r) { flash('last cue of its type — it runs to the end of the set', true); syncInspector(); return; }
+    if (r.field === 'duration') { r.target.duration = r.value; model.rev++; }
+    else model.setCueAt(r.target, r.value);   // moves the NEXT cue, by design
+    syncInspector(); needDraw = true;
+  });
+
+  wire($('insScene'), (c) => {
     c.scene = $('insScene').value; model.rev++;
   });
-  wire($('insLogo'), () => {
-    const c = model.sel; if (!c) return;
+  wire($('insLogo'), (c) => {
     c.logo = $('insLogo').checked; model.rev++;
   });
-  wire($('insVdur'), () => {
-    const c = model.sel; if (!c) return;
+  wire($('insVdur'), (c) => {
     c.duration = Math.max(0, Number($('insVdur').value) || 0); model.rev++;
   });
-  wire($('insVret'), () => {
-    const c = model.sel; if (!c) return;
+  wire($('insVret'), (c) => {
     const v = $('insVret').value;
     if (v) c.return_scene = v; else delete c.return_scene;
     model.rev++;
   });
-  wire($('insFade'), () => {
-    const c = model.sel; if (!c) return;
+  wire($('insFade'), (c) => {
     c.fade = Math.max(0, Number($('insFade').value) || 0); model.rev++;
   });
-  wire($('insRoot'), () => {
-    const c = model.sel; if (!c || !c.palette) return;
+  wire($('insRoot'), (c) => {
+    if (!c.palette) return;
     const s = $('insRoot').value;
     if (s === '') delete c.palette.root; else c.palette.root = Number(s) || 0;
     model.rev++;
   });
-  wire($('insDrift'), () => {
-    const c = model.sel; if (!c || !c.palette) return;
+  wire($('insDrift'), (c) => {
+    if (!c.palette) return;
     const s = $('insDrift').value;
     if (s === '') delete c.palette.drift; else c.palette.drift = Number(s) || 0;
     model.rev++;
@@ -1191,11 +1382,44 @@ function buildInspector() {
 /* Focus opens an undo gesture, blur closes it (and drops it if nothing moved),
    input applies. That way one edit = one undo step, however many keystrokes. */
 function wire(el, onInput, onChange) {
-  let tok = null;
-  el.addEventListener('focus', () => { tok = model.beginGesture(); });
-  el.addEventListener('blur', () => { model.endGesture(tok); tok = null; refreshChrome(); });
-  if (onInput) el.addEventListener('input', () => { if (insLock) return; onInput(); syncSwatch(); needDraw = true; refreshChrome(); });
-  if (onChange) el.addEventListener('change', () => { if (insLock) return; onChange(); refreshChrome(); });
+  let tok = null, target = null;
+
+  /* THE CUE THIS FIELD WAS OPENED AGAINST — captured on focus and handed to
+     the callbacks, which must NEVER re-read model.sel at commit time.
+
+     That was a real bug, and it is the reason a cue's neighbour appeared to
+     move when the operator retimed it. `change` on a text input does not fire
+     when you stop typing; it fires when focus leaves. If focus leaves because
+     you CLICKED THE NEXT CUE BAR, the browser runs pointerdown listeners first
+     and only then performs the focus change as mousedown's default action — so
+     by the time `change` arrives, our own pointerdown handler has already
+     called select() and model.sel is the cue you just clicked. The pending
+     edit then landed on THAT cue. Type an earlier time for cue N, click cue
+     N+1 to check it, and cue N+1 is what moved.
+
+     Capturing on focus makes the target the cue that was on screen when the
+     operator started typing, which is the only cue they can have meant. */
+  const aim = () => {
+    const c = target || model.sel;
+    if (!c) return null;
+    // undone, deleted or reloaded out from under the field: drop the edit
+    // rather than write to an object no longer in the document
+    if (model.cues().indexOf(c) < 0) return null;
+    return c;
+  };
+
+  el.addEventListener('focus', () => { target = model.sel; tok = model.beginGesture(); });
+  el.addEventListener('blur', () => { model.endGesture(tok); tok = null; target = null; refreshChrome(); });
+  if (onInput) el.addEventListener('input', () => {
+    if (insLock) return;
+    const c = aim(); if (!c) return;
+    onInput(c); syncSwatch(); needDraw = true; refreshChrome();
+  });
+  if (onChange) el.addEventListener('change', () => {
+    if (insLock) return;
+    const c = aim(); if (!c) return;
+    onChange(c); refreshChrome();
+  });
 }
 
 function trackTitleAt(t) {
@@ -1248,6 +1472,22 @@ function syncInspector() {
     $('rowOrig').style.display = '';
   } else {
     $('rowOrig').style.display = 'none';
+  }
+
+  // ENDS. For scene/palette this is the NEXT same-type cue's start, and the
+  // label says so — editing it moves that cue, not this one.
+  const endT = endOfCue(model.cues(), c);
+  const isVid = (t === 'video');
+  $('insEndK').textContent = isVid ? 'Ends' : 'Ends =';
+  $('insEndHint').textContent = isVid ? '(at + duration)' : (endT == null ? '' : '(next cue start)');
+  if (endT == null) {
+    $('insEnd').value = '';
+    $('insEnd').placeholder = '— runs to end of set';
+    $('insEnd').disabled = true;
+  } else {
+    $('insEnd').disabled = false;
+    $('insEnd').placeholder = '';
+    if (document.activeElement !== $('insEnd')) $('insEnd').value = fmtTc(endT);
   }
 
   $('grpScene').style.display = (t === 'scene') ? '' : 'none';
@@ -1588,6 +1828,15 @@ function wireChrome() {
   $('btnSave').addEventListener('click', saveAll);
   $('btnDownload').addEventListener('click', download);
   $('btnPlay').addEventListener('click', () => togglePlay());
+  // apply live while dragging, persist on release. No keyboard bindings: the
+  // arrow keys belong to cue-nudge, so the slider hands focus back when the
+  // pointer lets go rather than quietly eating them.
+  $('volSlider').addEventListener('input', () => applyVolume($('volSlider').value));
+  $('volSlider').addEventListener('change', () => {
+    applyVolume($('volSlider').value);
+    saveVolume(volPct);
+    $('volSlider').blur();
+  });
   window.addEventListener('resize', () => { fitCanvas(); clampView(); preview.onResize(); });
   if (window.ResizeObserver) new ResizeObserver(() => { fitCanvas(); clampView(); }).observe(tlwrap);
 }

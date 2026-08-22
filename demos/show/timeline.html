@@ -155,10 +155,26 @@
   #palGrid input { padding: 3px 4px; font-size: 11px; }
   #insSwatch { width: 100%; height: 22px; display: block; margin: 6px 0 8px; border: 1px solid var(--line); }
   #insEmpty { color: rgba(207,238,226,0.4); font-size: 12px; line-height: 1.7; }
+  .ehint { flex: none; font-size: 10px; color: rgba(207,238,226,0.35); white-space: nowrap; }
+  #insEnd:disabled { opacity: 0.5; }
   kbd {
     font: inherit; font-size: 10px; border: 1px solid var(--line);
     padding: 0 4px; color: var(--phos); background: rgba(70,255,200,0.06);
   }
+
+  /* transport volume. The generic `input` rule above (flex:1, bordered box) is
+     wrong for a range, so it is undone here. */
+  .vol { display: flex; align-items: center; gap: 7px; }
+  .vol .vk {
+    font-size: 10px; letter-spacing: 1px; color: rgba(207,238,226,0.45);
+    text-transform: uppercase;
+  }
+  .vol input[type=range] {
+    flex: none; width: 92px; padding: 0; border: none; background: transparent;
+    accent-color: var(--phos); cursor: pointer;
+  }
+  .vol input[type=range]:focus { background: transparent; border: none; }
+  #volText { min-width: 34px; text-align: right; }
 </style>
 </head>
 <body>
@@ -192,12 +208,19 @@
       <div id="insEmpty">
         Click a cue bar to select it.<br>
         <kbd>Tab</kbd> walks the cue list &middot; <kbd>&larr;</kbd><kbd>&rarr;</kbd> nudge
-        0.05 s (<kbd>Shift</kbd> 0.5 s) &middot; <kbd>Enter</kbd> auditions from 2 s before.
+        0.05 s (<kbd>Shift</kbd> 0.5 s) &middot; <kbd>Enter</kbd> auditions from 2 s before.<br>
+        Dragging snaps to track starts and cannot cross a same-type neighbour.
+        <kbd>Shift</kbd>+drag to reorder, <kbd>Alt</kbd> to place freely.
       </div>
       <div id="insBody" style="display:none">
         <div class="row"><span class="k">Type</span><span class="v" id="insType">&mdash;</span></div>
         <div class="row"><span class="k">Track</span><span class="v" id="insTrack">&mdash;</span></div>
         <div class="row"><span class="k">At</span><input id="insAt" spellcheck="false" title="HH:MM:SS.mmm, MM:SS or plain seconds"></div>
+        <div class="row">
+          <span class="k" id="insEndK">Ends =</span>
+          <input id="insEnd" spellcheck="false" title="Where this cue stops. A scene or palette cue has no length of its own &mdash; it runs until the next cue of the same type, so editing this moves THAT cue's start. A video insert owns its end, so editing it changes the clip duration.">
+          <span class="ehint" id="insEndHint"></span>
+        </div>
         <div class="row" id="rowOrig"><span class="k">Original</span><span class="v" id="insOrig">&mdash;</span></div>
 
         <div class="grp" id="grpScene">
@@ -234,12 +257,18 @@
 
 <footer>
   <button id="btnPlay">PLAY</button>
+  <label class="vol" title="Output volume. Attenuates AFTER the analyser tap, so turning the room down does not flatten the preview's audio reactivity.">
+    <span class="vk">VOL</span>
+    <input id="volSlider" type="range" min="0" max="100" step="1" value="25">
+    <span class="meta" id="volText">25%</span>
+  </label>
   <span class="chip warn" id="armHint">ARM AUDIO &mdash; click PLAY or hit space</span>
   <span class="meta" id="posText">0:00.000 / 0:00</span>
   <span class="sep"></span>
   <span class="meta" id="cueText"></span>
   <span class="spacer"></span>
-  <span class="meta"><kbd>space</kbd> play <kbd>0</kbd> fit <kbd>+</kbd><kbd>-</kbd> zoom
+  <span class="meta">drag snaps to track starts &middot; <kbd>shift</kbd>+drag reorder &middot;
+    <kbd>alt</kbd> no snap &middot; <kbd>space</kbd> play <kbd>0</kbd> fit <kbd>+</kbd><kbd>-</kbd> zoom
     <kbd>1</kbd><kbd>2</kbd> stage <kbd>&#8984;Z</kbd> undo <kbd>&#8984;S</kbd> save <kbd>esc</kbd> deselect</span>
 </footer>
 

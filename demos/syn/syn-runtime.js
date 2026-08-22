@@ -1159,9 +1159,9 @@ export class SynScene {
        store and POST /show/controls that a momentary edge would not. */
     this.cBgSwap = mk('BACKDROP_SWAP', 0,
       { TYPE: 'bang counter', MIN: 0, MAX: 1, DEFAULT: 0,
-        DESCRIPTION: 'Step the backdrop nebula a golden angle round the hue '
-          + 'circle — a different family of colour behind this scene on every '
-          + 'press. Affects the shared backdrop only, never the scene itself.' });
+        DESCRIPTION: 'Random complementary palette behind this scene — two '
+          + 'near-opposite anchor colours, faded in over a second. Press again '
+          + 'for another. Affects the shared backdrop only, never the scene.' });
     this.controls.push(this.cBgOn, this.cBgMix, this.cBgSwap);
   }
 

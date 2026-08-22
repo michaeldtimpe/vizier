@@ -168,6 +168,20 @@ function ctl(name, glsl, value, spec) {
   };
 }
 
+/* HSL -> RGB, every component in 0..1. The bound that matters downstream:
+   a = s * min(l, 1-l) <= min(l, 1-l), so every channel lands in [l-a, l+a] and
+   therefore inside [0,1] whatever s and l are. That is what lets swapPalette()
+   promise the gradient never clips — see the note there. */
+function hsl2rgb(h, s, l) {
+  h -= Math.floor(h);                      // wrap into [0,1)
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return [f(0), f(8), f(4)];
+}
+
 export default class NebulaViz {
   /* opts.paletteStep — starting index into the hue rotation, for a caller that
      wants to pin the opening palette. Normally left alone: the gallery calls
@@ -286,8 +300,16 @@ export default class NebulaViz {
           + 'every activation, so a return visit is a different colour of '
           + 'cloud. A palette cue pins the colours and suppresses this too.' });
 
+    this.cSwap = ctl('PAL_SWAP', 'float', 0,
+      { TYPE: 'bang counter', MIN: 0, MAX: 1, DEFAULT: 0,
+        DESCRIPTION: 'Random complementary palette swap — two near-opposite '
+          + 'anchor colours, faded in over a second. Press again for another. '
+          + 'A counter rather than a momentary bang so the console can press '
+          + 'it from the other end of the room.' });
+
     this.controls = [this.cBias, this.cAmp, ...this.cFreq, ...this.cPhase,
-      this.cRoot, this.cDrift, this.cStep];
+      this.cRoot, this.cDrift, this.cStep, this.cSwap];
+    this._palSwapSeen = undefined;   // adopted, not fired, on the first frame
 
     /* Effective (post-fade) coefficients, uploaded once per frame. Scratch,
        like everything else in the render path — nothing here allocates. */
@@ -382,6 +404,49 @@ export default class NebulaViz {
     this.palStep = 0;
     this.palOffset = 0;
     this.palPinned = true;
+  }
+
+  /* Random palette, built on a COMPLEMENTARY PAIR. The iq form has a property
+     worth exploiting: with bias = (c1+c2)/2 and amp = (c1-c2)/2 the cosine
+     oscillates exactly between the two anchor colours, because cos spans
+     [-1,1] and bias +/- amp is precisely c1 and c2. So instead of dialling
+     eight coefficients and hoping, pick two colours and let the algebra place
+     the gradient between them.
+
+     Two anchors near-opposite on the hue circle is what makes a swap read as a
+     DIFFERENT nebula rather than a shifted one — the eye is reading the
+     contrast between the cloud's lit and shadowed regions, and complementary
+     anchors maximise it. The +/-0.08 turn of jitter on the partner keeps it
+     off the sterile exact-opposite, and per-channel freq and phase jitter stop
+     consecutive swaps from all looking like the same two-tone ramp: the
+     channels drift out of step, so the gradient sweeps THROUGH colours on its
+     way between the anchors instead of crossfading between them.
+
+     Nothing here can clip. Every anchor channel is in [0,1] (see hsl2rgb), and
+     bias +/- |amp| stays inside [min(c1,c2), max(c1,c2)] channel by channel.
+     amp is deliberately SIGNED — a negative channel is a phase flip, which is
+     half of what the two-anchor form is doing. (The panel's PAL_AMP colour
+     picker clamps a negative channel to 0 in its swatch; the value itself is
+     untouched until someone actually drags it.)
+
+     `drift` is left alone on purpose: how fast the palette wanders is the
+     operator's setting, not a property of the colours. */
+  swapPalette(fadeSec = 1.0) {
+    const rnd = (lo, hi) => lo + Math.random() * (hi - lo);
+    const h1 = Math.random();
+    const h2 = h1 + 0.5 + rnd(-0.08, 0.08);
+    const c1 = hsl2rgb(h1, rnd(0.65, 1.0), rnd(0.42, 0.62));
+    const c2 = hsl2rgb(h2, rnd(0.65, 1.0), rnd(0.42, 0.62));
+    const three = (f) => [f(0), f(1), f(2)];
+    this.setPalette({
+      bias: three((i) => (c1[i] + c2[i]) / 2),
+      amp: three((i) => (c1[i] - c2[i]) / 2),
+      freq: three(() => rnd(0.35, 0.7)),
+      phase: three(() => rnd(-0.06, 0.06)),
+      // a light chord-root response: the cloud still answers the music, but
+      // the designed contrast is what the eye reads
+      root: rnd(0.05, 0.3),
+    }, fadeSec);
   }
 
   /* An explicit operator "give me a different colour" — the backdrop scenes'
@@ -482,6 +547,18 @@ export default class NebulaViz {
     // slow hue wander, in turns per minute (0.182 -> one turn per ~5.5 min,
     // which is the rate this was hard-coded to before it became a control)
     this.palDrift += dt * this.cDrift.value / 60;
+
+    /* PAL_SWAP is a bang COUNTER, watched here rather than wired up outside:
+       the panel's button, a console CTRL push and a live-control write all do
+       nothing but increment it, so the scene watching its own number move
+       serves all three with no host code at all. The first frame ADOPTS
+       whatever the counter reads — a preset or a live write that landed before
+       this scene ever drew must not fire a swap nobody asked for — and after
+       that any increase fires exactly once, however far the number jumped. */
+    const sv = Number(this.cSwap.value) || 0;
+    const swapSeen = this._palSwapSeen;
+    this._palSwapSeen = sv;
+    if (swapSeen !== undefined && sv > swapSeen) this.swapPalette(1.0);
 
     // resolve this frame's palette coefficients (and advance any running fade)
     this._effective(dt);

@@ -11,12 +11,12 @@
 
   "stages": {
     "idle":         { "scene": "BLACK",     "logo": false },
-    "armed":        { "scene": "TEST_CARD", "logo": false },
+    "armed":        { "scene": "BLACK",     "logo": false },
     "preshow":      { "scene": "TEST_CARD", "logo": false },
-    "hold_opener":  { "scene": "TEST_CARD", "logo": true  },
+    "hold_opener":  { "scene": "BLACK",     "logo": false },
     "opener":       { "cues": "cues-pm-2026-opener.json", "scene": "NEBULA", "logo": true  },
-    "intermission": { "scene": "TEST_CARD", "logo": true  },
-    "hold_main":    { "scene": "TEST_CARD", "logo": true  },
+    "intermission": { "scene": "BLACK",     "logo": false },
+    "hold_main":    { "scene": "BLACK",     "logo": false },
     "main":         { "cues": "cues-pm-2026.json", "scene": "PLUS", "logo": false },
     "done":         { "scene": "BLACK",     "logo": false }
   }
