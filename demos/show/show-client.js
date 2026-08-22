@@ -13,7 +13,9 @@
                server marks the page connected because it is polling.
      drive()   every 250 ms, reconcile the deck against the leader's transport
      report()  every 500 ms, POST /show/page so show-view's VISUALS menu can
-               show what is actually on screen, plus live drift
+               show what is actually on screen, plus live drift, plus the
+               active scene's control surface when it changes (that block is
+               what the console's CTRL tab draws itself from)
 
    The deck follows show-view's python player, which is the clock that matters:
    the leader sends (track, position, playing) and this page extrapolates
@@ -48,6 +50,13 @@ export function initShow(host) {
      set instead of free-running off its own element clock. */
   let insert = null;
   let lastPresetsRev = null;
+  /* Palette cues (the opening set). The server hands over the whole coefficient
+     set — this end has no cue list, it renders state — plus `live`, which says
+     the playhead WALKED over the cue rather than landing past it. Fading on
+     anything else would mean crossfading out of a palette this TV never showed,
+     which looks like a bug from the floor. */
+  let lastPalIdx = null;
+  let lastLiveRev = null;       // POST /show/controls, applied on rev change
 
   // transport as last commanded by the leader, plus when it landed here
   let cmd = { track: null, position: 0, playing: false, duration: 0 };
@@ -108,6 +117,25 @@ export function initShow(host) {
     setLogo(!!st.logo);
     insert = st.video || null;
     pushVideo();          // don't wait up to 250 ms for the next drive() tick
+
+    /* Fade only when this page watched the previous cue go by AND the server
+       says the crossing was continuous AND this is the very next palette in
+       the list. Any gap — a seek, a late join, a stage arrival, an override
+       release — snaps instead. */
+    const pal = st.palette || null;
+    if (!pal) {
+      lastPalIdx = null;
+    } else if (pal.index !== lastPalIdx && host.setPalette) {
+      const stepped = lastPalIdx !== null && pal.live && pal.index === lastPalIdx + 1;
+      host.setPalette(pal.palette, stepped ? (+pal.fade || 0) : 0);
+      lastPalIdx = pal.index;
+    }
+
+    // live controls: ephemeral, last-writer-wins, gated on a single int
+    if (st.live && st.live.rev !== lastLiveRev) {
+      lastLiveRev = st.live.rev;
+      if (host.applyLiveControls) host.applyLiveControls(st.live);
+    }
 
     if (presetsRev && refreshPresets && typeof st.presets_rev === 'number') {
       if (lastPresetsRev === null) lastPresetsRev = st.presets_rev;
@@ -260,6 +288,28 @@ export function initShow(host) {
   let frameLevel = 0;
   function noteFrame(f) { frameLevel = f ? f.level : 0; }
 
+  /* The console's CTRL tab is built from the ACTIVE SCENE's control surface,
+     which only this page knows. It is also the biggest thing this report can
+     carry — every slider spec of the scene — so it does not ride along twice a
+     second unconditionally: it goes when something in it moved, or every 10th
+     report (~5 s) so a console that connects mid-show gets it without waiting
+     for someone to touch a knob. Values are compared at 4 dp because a control
+     driven off audio jitters in the last bits forever and that is not a change
+     anyone can see. */
+  let ctrlSig = null;
+  let reportN = 0;
+
+  const r4 = (n) => Math.round(n * 1e4) / 1e4;
+
+  function ctrlSignature(c) {
+    const vals = (c.controls || []).map((x) => (
+      typeof x.value === 'number' ? r4(x.value)
+        : Array.isArray(x.value) ? x.value.map((n) => (typeof n === 'number' ? r4(n) : n))
+          : x.value));
+    return JSON.stringify([c.scene, c.quality, c.grade, c.audio,
+      (c.controls || []).map((x) => x.name), vals]);
+  }
+
   async function report() {
     const body = {
       scene: activeName(),
@@ -286,6 +336,17 @@ export function initShow(host) {
       view: [innerWidth, innerHeight],
       screen: [screen.width, screen.height],
     };
+    if (host.reportControls) {
+      let c = null;
+      try { c = host.reportControls(); } catch (e) { c = null; }
+      if (!c) {
+        ctrlSig = null;               // no scene up: next one is a fresh send
+      } else {
+        const sig = ctrlSignature(c);
+        if (sig !== ctrlSig || reportN % 10 === 0) { body.ctrl = c; ctrlSig = sig; }
+      }
+    }
+    reportN += 1;
     try {
       await fetch(BASE + '/show/page', {
         method: 'POST',

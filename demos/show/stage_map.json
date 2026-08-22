@@ -1,5 +1,7 @@
 {
-  "_note": "show-view stage -> vizier scene. THE cue list: the follower resolves it, show-view only displays it (GET /show/status). Stages not listed fall through to `default`. Scene names must match the gallery manifest exactly (demos.html DEMOS + demos/syn/syn-manifest.js); GET /show/scenes lists them with an `available` flag. Confirmed cues: preshow -> TEST_CARD (no logo), opener -> NEBULA + logo.",
+  "_note": "show-view stage -> vizier scene. THE cue list: the follower resolves it, show-view only displays it (GET /show/status). Stages not listed fall through to `default`. Scene names must match the gallery manifest exactly (demos.html DEMOS + demos/syn/syn-manifest.js); GET /show/scenes lists them with an `available` flag. Confirmed cues: preshow -> TEST_CARD (no logo), opener -> NEBULA + logo. A row may name a `cues` file INSTEAD of driving one scene for its whole length; `scene`/`logo` stay beside it as the fallback used if that file fails to load.",
+
+  "_opener_note": "`opener` is the 21-minute opening set, one continuous wav like the main set. Its cue doc holds a single scene cue (NEBULA + logo, i.e. exactly the old static row) plus one PALETTE cue per track: {type:'palette', at, fade, track, palette:{bias,amp,freq,phase,root,drift}} recolours the running NEBULA without changing scene, crossfading over `fade` seconds when the playhead walks over the cue. The 11 palettes in cues-pm-2026-opener.json are drafts — the operator refines them live from the console's CTRL tab, and the timeline editor owns the times.",
 
   "_main_note": "`main` is the DJ set: one continuous 78-minute wav, so it cannot be one scene. Its row names a cue file instead of a scene, and the follower's cue engine drives scene / logo / video inserts from the synced TRACK POSITION (demos/show/cues-pm-2026.json, snapped to the beat — see cues-snap-report.txt). A scene override (POST /show/scene) suspends the cue engine until it is released with {name: null}.",
 
@@ -12,7 +14,7 @@
     "armed":        { "scene": "TEST_CARD", "logo": false },
     "preshow":      { "scene": "TEST_CARD", "logo": false },
     "hold_opener":  { "scene": "TEST_CARD", "logo": true  },
-    "opener":       { "scene": "NEBULA",    "logo": true  },
+    "opener":       { "cues": "cues-pm-2026-opener.json", "scene": "NEBULA", "logo": true  },
     "intermission": { "scene": "TEST_CARD", "logo": true  },
     "hold_main":    { "scene": "TEST_CARD", "logo": true  },
     "main":         { "cues": "cues-pm-2026.json", "scene": "PLUS", "logo": false },

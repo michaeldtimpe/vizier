@@ -1,0 +1,180 @@
+{
+  "_note": "PARTY MOUNTAIN 2026 OPENING-SET visual cues. Times are OPENING-SET TRACK POSITION in seconds against pm-2026-opening-set.wav (one continuous file), NOT wall clock — the follower evaluates them against the synced transport position, so pausing and seeking stay correct. `at` values are the track boundaries from pm-2026-opening-set-tracklist.txt, typed not beat-snapped (the opener cuts on track changes, not on beats). The set never leaves NEBULA: one scene cue holds it there and every other cue is a PALETTE — iq cosine coefficients colour(t) = bias + amp*cos(2pi*(freq*t + phase)) — that recolours the running scene, crossfading over `fade` seconds when the playhead walks over the cue and snapping when it seeks or joins late. THESE 11 PALETTES ARE DRAFTS: they were written to each track's character, not measured, and the operator refines them live from the console CTRL tab. Edit `at` freely (timeline editor / POST /show/cues); nothing regenerates this file.",
+  "audio": "pm-2026-opening-set.wav",
+  "duration": 1253.33,
+  "cues": [
+    {
+      "type": "scene",
+      "at": 0.0,
+      "scene": "NEBULA",
+      "logo": true,
+      "track": "INTRO",
+      "note": "the old static opener row, now the floor the palettes sit on"
+    },
+    {
+      "type": "palette",
+      "at": 0.0,
+      "fade": 0.0,
+      "track": "INTRO",
+      "note": "dim cold blue-grey — the room is still filling",
+      "palette": {
+        "bias": [0.18, 0.2, 0.24],
+        "amp": [0.1, 0.12, 0.16],
+        "freq": [0.3, 0.3, 0.35],
+        "phase": [0.55, 0.6, 0.7],
+        "root": 0.1,
+        "drift": 0.05
+      }
+    },
+    {
+      "type": "palette",
+      "at": 3.0,
+      "fade": 4.0,
+      "track": "shattered-alpha",
+      "note": "icy cyan / silver",
+      "palette": {
+        "bias": [0.3, 0.42, 0.52],
+        "amp": [0.25, 0.3, 0.38],
+        "freq": [0.35, 0.4, 0.45],
+        "phase": [0.5, 0.58, 0.66],
+        "root": 0.15,
+        "drift": 0.1
+      }
+    },
+    {
+      "type": "palette",
+      "at": 182.0,
+      "fade": 8.0,
+      "track": "something-on-the-way-omega-mash",
+      "note": "violet leaning into pink",
+      "palette": {
+        "bias": [0.42, 0.32, 0.5],
+        "amp": [0.35, 0.28, 0.4],
+        "freq": [0.42, 0.38, 0.46],
+        "phase": [0.78, 0.62, 0.55],
+        "root": 0.2,
+        "drift": 0.12
+      }
+    },
+    {
+      "type": "palette",
+      "at": 259.0,
+      "fade": 8.0,
+      "track": "electropunk-beta-short",
+      "note": "acid magenta / purple, faster drift",
+      "palette": {
+        "bias": [0.55, 0.25, 0.55],
+        "amp": [0.45, 0.25, 0.45],
+        "freq": [0.55, 0.45, 0.5],
+        "phase": [0.85, 0.3, 0.65],
+        "root": 0.25,
+        "drift": 0.25
+      }
+    },
+    {
+      "type": "palette",
+      "at": 312.0,
+      "fade": 8.0,
+      "track": "electric-disco-beta",
+      "note": "disco gold / amber with teal flashes",
+      "palette": {
+        "bias": [0.55, 0.45, 0.3],
+        "amp": [0.42, 0.38, 0.3],
+        "freq": [0.48, 0.42, 0.55],
+        "phase": [0.1, 0.22, 0.55],
+        "root": 0.3,
+        "drift": 0.3
+      }
+    },
+    {
+      "type": "palette",
+      "at": 449.0,
+      "fade": 8.0,
+      "track": "shattered-beta",
+      "note": "hard teal / ice — the alpha's colder sibling",
+      "palette": {
+        "bias": [0.25, 0.42, 0.48],
+        "amp": [0.22, 0.35, 0.4],
+        "freq": [0.4, 0.45, 0.5],
+        "phase": [0.52, 0.55, 0.62],
+        "root": 0.15,
+        "drift": 0.15
+      }
+    },
+    {
+      "type": "palette",
+      "at": 527.0,
+      "fade": 8.0,
+      "track": "fcm-beta",
+      "note": "crimson ember",
+      "palette": {
+        "bias": [0.55, 0.3, 0.2],
+        "amp": [0.45, 0.28, 0.18],
+        "freq": [0.5, 0.4, 0.35],
+        "phase": [0.05, 0.15, 0.3],
+        "root": 0.2,
+        "drift": 0.15
+      }
+    },
+    {
+      "type": "palette",
+      "at": 670.0,
+      "fade": 8.0,
+      "track": "fgs-edm-alpha-short",
+      "note": "electric blue, big-room",
+      "palette": {
+        "bias": [0.28, 0.45, 0.6],
+        "amp": [0.26, 0.4, 0.4],
+        "freq": [0.45, 0.5, 0.55],
+        "phase": [0.55, 0.6, 0.7],
+        "root": 0.3,
+        "drift": 0.25
+      }
+    },
+    {
+      "type": "palette",
+      "at": 781.0,
+      "fade": 8.0,
+      "track": "rubber-club-beta",
+      "note": "lime / deep green club",
+      "palette": {
+        "bias": [0.35, 0.52, 0.28],
+        "amp": [0.32, 0.42, 0.25],
+        "freq": [0.5, 0.55, 0.4],
+        "phase": [0.3, 0.35, 0.5],
+        "root": 0.25,
+        "drift": 0.2
+      }
+    },
+    {
+      "type": "palette",
+      "at": 886.0,
+      "fade": 8.0,
+      "track": "good-morning-duet-cover",
+      "note": "sunrise peach / rose / gold — the warm one",
+      "palette": {
+        "bias": [0.6, 0.45, 0.4],
+        "amp": [0.38, 0.32, 0.3],
+        "freq": [0.35, 0.32, 0.3],
+        "phase": [0.05, 0.15, 0.28],
+        "root": 0.15,
+        "drift": 0.1
+      }
+    },
+    {
+      "type": "palette",
+      "at": 1081.0,
+      "fade": 10.0,
+      "track": "being-here-shes-back-remix",
+      "note": "wide euphoric spectrum, the whole wheel turning",
+      "palette": {
+        "bias": [0.5, 0.45, 0.5],
+        "amp": [0.45, 0.42, 0.45],
+        "freq": [0.6, 0.55, 0.65],
+        "phase": [0.9, 0.33, 0.66],
+        "root": 0.5,
+        "drift": 0.35
+      }
+    }
+  ]
+}

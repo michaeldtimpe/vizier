@@ -202,6 +202,13 @@ def snap(f, want):
 
 
 def main():
+    # The table below is the ORIGINAL input, not the current one. Times get
+    # dragged in the timeline editor and saved through POST /show/cues, and
+    # rerunning this would silently throw all of that away.
+    if os.path.exists(OUT_JSON) and '--force' not in sys.argv:
+        sys.exit('cues-pm-2026.json is the live source of truth (timeline '
+                 'editor / POST /show/cues edits it); rerun with --force to '
+                 'regenerate from the hardcoded table')
     if not os.path.exists(WAV):
         sys.exit('missing wav: ' + WAV)
     rows = []

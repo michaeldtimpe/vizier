@@ -968,6 +968,8 @@ precision highp float;
 uniform sampler2D src;
 uniform vec2 res;
 uniform vec4 grade;
+uniform sampler2D bg;      // the shared nebula, rendered in another context
+uniform vec2 bgMix;        // (strength, chroma weight); x == 0 disables it all
 out vec4 C;
 vec3 hueRotate(vec3 c, float a) {
   const vec3 k = vec3(0.57735026919);
@@ -980,6 +982,21 @@ void main() {
     c = hueRotate(c, grade.x);
     c = mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, grade.y);
     c = pow(max(c * grade.w, 0.0), vec3(grade.z));
+  }
+  /* Nebula backdrop, for the six black-and-white scenes that read as line art
+     on black. The key is luminance MINUS chroma, so white areas fill with
+     nebula, black stays black, and a saturated accent (FUZZY_SIGNAL's glitch
+     colours) keeps its own colour instead of being replaced. Squaring the key
+     in the mix keeps the mid-greys mostly scene, so the line work survives.
+     Composited AFTER the grade on purpose: the nebula arrives ungraded, which
+     is what keeps a palette cue's colours true on the TV.
+     bgMix.x == 0 costs one compare — that is the other 80-odd scenes. */
+  if (bgMix.x > 0.0) {
+    vec3 neb = texture(bg, gl_FragCoord.xy / res).rgb;
+    float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    float chr  = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+    float key  = clamp(luma - bgMix.y * chr, 0.0, 1.0);
+    c = mix(c, neb * (0.35 + 0.65 * key), bgMix.x * key * key);
   }
   C = vec4(c, 1.0);
 }
@@ -997,7 +1014,10 @@ export class SynScene {
        patches   [[from, to], ...] literal/regex fixes applied to main.glsl
                  before transformation, for the int/float looseness a generic
                  rewriter cannot safely infer
-       timeScale multiplier on TIME and the syn_*Time clocks (default 1) */
+       timeScale multiplier on TIME and the syn_*Time clocks (default 1)
+       backdrop  this scene opts into the shared nebula backdrop: it gains two
+                 synthetic controls (see _buildControls) and blends whatever
+                 the host hands it in `backdropSource` through the final blit */
   constructor(canvas, opts) {
     this.canvas = canvas;
     this.opts = opts || {};
@@ -1104,7 +1124,49 @@ export class SynScene {
          every frame, so mutating it is the whole live-control mechanism. */
       this.controls.push({ name, glsl, value, def, spec: c });
     }
+    if (this.opts.backdrop) this._backdropControls(over);
   }
+
+  /* The nebula backdrop's two knobs. They are ordinary `controls[]` rows, which
+     is the entire trick: the gallery panel, the preset store and the show
+     console's control report all walk that array and need no idea these two
+     came from the runtime rather than from scene.json.
+
+     `synth` keeps them OUT of _uniformBlock(), so no scene shader is handed a
+     uniform it never declared and never reads. _drawPass's null-location guard
+     would skip them anyway; not emitting them at all is simply the smaller
+     blast radius across ~80 shaders. */
+  _backdropControls(over) {
+    const mk = (name, value, spec) => {
+      const v = (name in over) && !Array.isArray(over[name]) ? Number(over[name]) : value;
+      return { name, glsl: 'float', value: v, def: value, synth: true,
+               spec: Object.assign({ NAME: name, UI_GROUP: 'nebula backdrop' }, spec) };
+    };
+    this.cBgOn = mk('BACKDROP_NEBULA', 1,
+      { TYPE: 'toggle', MIN: 0, MAX: 1, DEFAULT: 1,
+        DESCRIPTION: 'Show NEBULA through this scene\'s white areas. Off means '
+          + 'zero backdrop work: nothing is rendered, uploaded or blended.' });
+    this.cBgMix = mk('BACKDROP_MIX', 0.85,
+      { TYPE: 'slider', MIN: 0, MAX: 1, DEFAULT: 0.85,
+        DESCRIPTION: 'How far the white areas go over to the nebula. Below ~0.5 '
+          + 'it reads as a tint on the scene rather than a window through it.' });
+    /* PALETTE SWAP. A bang counter rather than a toggle because it is an
+       EVENT, not a state: addSceneControl's 'bang counter' branch renders a
+       button that does nothing but `value += 1`, and the host watches the
+       number move. That is what lets the gallery panel's button and the
+       console's remote push drive one mechanism — neither needs to know the
+       other exists, and a counter survives the round trip through the preset
+       store and POST /show/controls that a momentary edge would not. */
+    this.cBgSwap = mk('BACKDROP_SWAP', 0,
+      { TYPE: 'bang counter', MIN: 0, MAX: 1, DEFAULT: 0,
+        DESCRIPTION: 'Step the backdrop nebula a golden angle round the hue '
+          + 'circle — a different family of colour behind this scene on every '
+          + 'press. Affects the shared backdrop only, never the scene itself.' });
+    this.controls.push(this.cBgOn, this.cBgMix, this.cBgSwap);
+  }
+
+  // the host asks this before doing any work on the shared nebula at all
+  backdropWanted() { return !!(this.cBgOn && this.cBgOn.value > 0.5); }
 
   _buildPasses(scene) {
     // Scene-authored output size; buffer sizes are kept in proportion to it so
@@ -1260,7 +1322,10 @@ export class SynScene {
     for (const n of META_FLOAT_UNIFORMS) L.push(`uniform float ${n};`);
     for (const n of META_VEC3_UNIFORMS) L.push(`uniform vec3 ${n};`);
     for (const n of SYN_SAMPLER_UNIFORMS) L.push(`uniform sampler2D ${n};`);
-    for (const c of this.controls) L.push(`uniform ${c.glsl} ${c.name};`);
+    for (const c of this.controls) {
+      if (c.synth) continue;      // runtime-owned, never read by scene GLSL
+      L.push(`uniform ${c.glsl} ${c.name};`);
+    }
     for (const name of this.images.keys()) L.push(`uniform sampler2D ${name};`);
     for (const p of this.passDefs) L.push(`uniform sampler2D ${p.target};`);
     // transition uniforms exist in ~a third of scenes; declare them so those
@@ -1324,6 +1389,8 @@ export class SynScene {
     this.blitSrc = gl.getUniformLocation(this.blit, 'src');
     this.blitRes = gl.getUniformLocation(this.blit, 'res');
     this.blitGrade = gl.getUniformLocation(this.blit, 'grade');
+    this.blitBg = gl.getUniformLocation(this.blit, 'bg');
+    this.blitBgMix = gl.getUniformLocation(this.blit, 'bgMix');
   }
 
   _initQuad() {
@@ -1511,6 +1578,8 @@ export class SynScene {
       dstT.swap();
     }
 
+    const bgOn = this._uploadBackdrop();
+
     // blit the final target to the canvas (it stays live as syn_FinalPass)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -1521,8 +1590,49 @@ export class SynScene {
     gl.uniform2f(this.blitRes, this.canvas.width, this.canvas.height);
     gl.uniform4f(this.blitGrade, SYN_GRADE.hue, SYN_GRADE.sat,
                  SYN_GRADE.gamma, SYN_GRADE.exposure);
+    /* Unit 1 is free here: _drawPass walks this._unit from 0 and rebinds every
+       unit it uses on every pass, so nothing carries between the two programs.
+       The sampler is bound even when the backdrop is off — it survives
+       compilation under a dynamic branch, and an incomplete texture on a live
+       sampler is undefined behaviour whether or not the branch is taken. */
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.texBackdrop || this.texBlack);
+    gl.uniform1i(this.blitBg, 1);
+    gl.uniform2f(this.blitBgMix, bgOn ? this.cBgMix.value : 0, 1.5);
+    gl.activeTexture(gl.TEXTURE0);   // leave the cursor where the rest expects it
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
+  }
+
+  /* Pull this frame of the shared nebula into THIS context. It is rendered by
+     the host into a detached canvas by a separate WebGL context, so a texture
+     cannot be shared — the pixels have to make the round trip. At 960x540 that
+     is ~2 MB a frame, sub-millisecond on the rig this show runs on, and it
+     only happens for a scene that asked for it.
+
+     Returns whether the blit should blend it: false means the branch is off
+     and no nebula work of any kind happened this frame. */
+  _uploadBackdrop() {
+    const src = this.backdropSource;
+    if (!src || !src.width || !src.height || !this.backdropWanted()) return false;
+    const gl = this.gl;
+    if (!this.texBackdrop) {
+      this.texBackdrop = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.texBackdrop);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      // the backdrop is sampled at screen coordinates and never tiles; REPEAT
+      // would smear the far edge into the near one on a size mismatch
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.texBackdrop);
+    // GL's origin is bottom-left and a canvas's is top-left; without the flip
+    // the nebula arrives upside down
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);   // every other upload assumes false
+    return true;
   }
 
   _drawPass(i, w, h) {
@@ -1677,6 +1787,10 @@ export class SynScene {
       gl.uniform1i(this.blitSrc, 0);
       gl.uniform2f(this.blitRes, w, h);
       gl.uniform4f(this.blitGrade, 0, 1, 1, 1);   // never grade an error card
+      // uniforms are per-PROGRAM state and this shares the blit program with
+      // render(): without zeroing it, a backdrop scene that fails to compile
+      // would key its own error text into the nebula
+      gl.uniform2f(this.blitBgMix, 0, 1.5);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.bindVertexArray(null);
     } catch (e) { /* nothing else we can do */ }
@@ -1688,6 +1802,7 @@ export class SynScene {
     for (const t of this.targets) t.dispose();
     if (this.finalTarget) this.finalTarget.dispose();
     for (const p of this.programs) gl.deleteProgram(p.prog);
+    if (this.texBackdrop) { gl.deleteTexture(this.texBackdrop); this.texBackdrop = null; }
     this.targets = []; this.programs = [];
     this.ready = false;
   }

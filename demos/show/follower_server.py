@@ -28,7 +28,7 @@ Endpoints (all CORS-open, all JSON except /show/audio):
     GET  /show/scenes              scene roster from the manifests, each
                                    flagged with whether its assets exist here
     GET  /show/config              demos/show/config.json as served
-    GET  /show/cues                the loaded cue list, verbatim
+    GET  /show/cues                every loaded cue doc, keyed by stage
     GET  /show/presets             demos/show/scene_presets.json
     GET  /show/events?since=N      long poll; returns as soon as seq > N
     POST /show/scene   {name}      operator override, sticks until the next
@@ -39,8 +39,19 @@ Endpoints (all CORS-open, all JSON except /show/audio):
     POST /show/page    {...}       the gallery page reporting its own state
     POST /show/preset  {scene, controls, grade?, quality?} | {scene, clear}
                                    save/erase one scene's saved look
+    POST /show/cues    {file, doc} replace one cue doc: validate, write, and
+                                   hot-reload it under the running show
+    POST /show/controls {scene?, controls?, grade?, audio?, quality?}
+                                   live effect controls, EPHEMERAL — this is
+                                   the console's knob-twiddling channel and it
+                                   is never written to disk (that is /preset)
     GET  /show/audio/<basename>    a show wav from config.audio_dir (Range
                                    supported — the main set is a ~1 h wav)
+
+/show/events answers with a SLIMMED snapshot: `page`, `page_ctrl` and
+`stage_map` are omitted. They are the three fattest fields on a response that
+fires on every seq bump, and the kiosk reads none of them. /show/status, which
+the console polls, still carries everything.
 
 Everything else falls through to the repo's static files.
 
@@ -128,6 +139,90 @@ def write_json_atomic(path, obj):
         return False
 
 
+def stage_cue_files(stage_map):
+    """{stage name: cue filename} for every row that names one.
+
+    The single answer to "which cue files does this show have", used at boot to
+    load them, by GET /show/cues to describe them, and by POST /show/cues to
+    decide what it is allowed to overwrite.
+    """
+    out = {}
+    for name, entry in (stage_map.get('stages') or {}).items():
+        if isinstance(entry, dict) and entry.get('cues'):
+            out[name] = str(entry['cues'])
+    d = stage_map.get('default')
+    if isinstance(d, dict) and d.get('cues'):
+        out['default'] = str(d['cues'])
+    return out
+
+
+# an iq cosine palette: colour(t) = bias + amp * cos(2pi * (freq*t + phase))
+PALETTE_VECS = ('bias', 'amp', 'freq', 'phase')
+PALETTE_KEYS = PALETTE_VECS + ('root', 'drift')
+
+
+def _is_num(v):
+    # json.loads accepts NaN and Infinity, and either one reaches the shader as
+    # a black frame — so "is a number" has to mean finite here
+    return (isinstance(v, (int, float)) and not isinstance(v, bool)
+            and v == v and v not in (float('inf'), float('-inf')))
+
+
+def validate_cue_doc(doc):
+    """Everything wrong with this doc, as a list of strings. Empty = good.
+
+    Deliberately narrow: it exists to stop the cue engine being handed
+    something it will throw on twenty times a second, NOT to police the
+    editor's bookkeeping. `at_original`, `at_original_hms`, `snap`, `track`,
+    `_note`, `edited` and anything else ride through untouched.
+    """
+    if not isinstance(doc, dict):
+        return ['doc must be an object']
+    cues = doc.get('cues')
+    if not isinstance(cues, list):
+        return ['doc.cues must be a list']
+    errs = []
+    for i, c in enumerate(cues):
+        w = 'cue %d' % i
+        if not isinstance(c, dict):
+            errs.append('%s: not an object' % w)
+            continue
+        at = c.get('at')
+        if not _is_num(at) or at < 0:
+            errs.append('%s: `at` must be a number >= 0' % w)
+        kind = c.get('type', 'scene')      # a cue with no type is a scene cue
+        if kind not in ('scene', 'video', 'palette'):
+            errs.append('%s: unknown type %r' % (w, kind))
+            continue
+        if kind == 'scene':
+            if not isinstance(c.get('scene'), str) or not c['scene'].strip():
+                errs.append('%s: scene cue needs a `scene` name' % w)
+        elif kind == 'video':
+            if not isinstance(c.get('video'), str) or not c['video'].strip():
+                errs.append('%s: video cue needs a `video` filename' % w)
+            if not _is_num(c.get('duration')) or c['duration'] <= 0:
+                errs.append('%s: video cue needs `duration` > 0' % w)
+        else:
+            if not _is_num(c.get('fade')) or c['fade'] < 0:
+                errs.append('%s: palette cue needs `fade` >= 0' % w)
+            pal = c.get('palette')
+            if not isinstance(pal, dict):
+                errs.append('%s: palette cue needs a `palette` object' % w)
+                continue
+            for k in pal:
+                if k not in PALETTE_KEYS:
+                    errs.append('%s: palette key %r is not one of %s'
+                                % (w, k, '/'.join(PALETTE_KEYS)))
+            for k in PALETTE_VECS:
+                if k in pal and not (isinstance(pal[k], list) and len(pal[k]) == 3
+                                     and all(_is_num(x) for x in pal[k])):
+                    errs.append('%s: palette.%s must be 3 finite numbers' % (w, k))
+            for k in ('root', 'drift'):
+                if k in pal and not _is_num(pal[k]):
+                    errs.append('%s: palette.%s must be a number' % (w, k))
+    return errs
+
+
 class Box:
     """The desired-state box: what the TV should be showing right now.
 
@@ -137,7 +232,7 @@ class Box:
     thing over verbatim.
     """
 
-    def __init__(self, stage_map, cues=None, presets=None):
+    def __init__(self, stage_map, cue_docs=None, presets=None):
         self.lock = threading.Condition()
         self.seq = 1
         self.stage_map = stage_map
@@ -152,19 +247,35 @@ class Box:
         self.sync_at = 0.0            # last /show/sync (leader liveness)
         self.page = None              # last /show/page report
         self.page_at = 0.0            # last poll or report (page liveness)
+        self.page_ctrl = None         # the active scene's control surface, as
+                                      # the page last described it (see note_page)
+
+        # ---- live effect controls ---------------------------------------
+        # The console's knob channel. Deliberately NOT persisted and not
+        # merged into the presets: this is "what the operator is doing right
+        # now", and it dies with the process. `rev` is all the page needs to
+        # notice a change without diffing the whole block.
+        self.live = {'rev': 0}
 
         # ---- cue engine -------------------------------------------------
-        self.cue_doc = cues or {}
-        self.cues = sorted(self.cue_doc.get('cues', []),
-                           key=lambda c: (float(c.get('at') or 0),
-                                          0 if c.get('type') != 'video' else 1))
-        self.scene_cues = [c for c in self.cues if c.get('type') != 'video']
-        self.video_cues = [c for c in self.cues if c.get('type') == 'video']
+        # Every stage-referenced cue doc is loaded at boot, keyed by basename;
+        # arriving on a stage selects one. Two stages, two timelines: the
+        # opener runs its own doc (palettes) and `main` runs the DJ set's.
+        self.cue_docs = cue_docs if isinstance(cue_docs, dict) else {}
+        self.cues_rev = 0             # bumped by save_cues, so editors can see
+                                      # a doc move under them
+        self.cue_doc = {}             # the ACTIVE doc — _use_cues owns this
+        self.cues = []
+        self.scene_cues = []
+        self.video_cues = []
+        self.palette_cues = []
         self.cue_index = -1           # index into scene_cues, -1 = before the first
         self.cue_pos = None           # position at the last evaluation
         self.video = None             # {video, at, duration, return_scene}
-        # per video cue: 'armed' | 'active' | 'skipped'
-        self.video_state = ['armed'] * len(self.video_cues)
+        self.video_state = []         # per video cue: 'armed'|'active'|'skipped'
+        self.palette = None           # {index, at, fade, live, track, palette}
+        self.palette_index = -1
+        self._use_cues(None)          # one place builds cue state, even at boot
 
         # ---- per-scene presets ------------------------------------------
         self.presets = presets if isinstance(presets, dict) else {}
@@ -177,8 +288,42 @@ class Box:
                 or self.stage_map.get('default', {}))
 
     def _cue_stage(self, stage=None):
-        """Does this stage hand the wheel to the cue engine?"""
-        return bool(self._stage_entry(stage).get('cues')) and bool(self.cues)
+        """Does this stage hand the wheel to the cue engine?
+
+        Asked of the STAGE MAP and the loaded docs, never of self.cues — so it
+        is already right when apply_stage asks it *before* switching docs.
+        """
+        fname = self._stage_entry(stage).get('cues')
+        doc = self.cue_docs.get(fname) if fname else None
+        return bool(doc and doc.get('cues'))
+
+    def _use_cues(self, fname):
+        """Point the cue engine at one loaded doc. Call with the lock held.
+
+        A stage change is a new timeline, not a continuation of the old one, so
+        everything positional is reset: the index, the last evaluated position,
+        the video arm states and the palette. Nothing may replay and nothing
+        may leak across (a palette latched by the opener must not survive into
+        the main set, where the doc has no palette cues to correct it).
+        """
+        self.cue_doc = self.cue_docs.get(fname) or {}
+        # video cues sort AFTER a scene cue at the same instant: the scene is
+        # what the insert returns to, so it has to be resolved first
+        self.cues = sorted(self.cue_doc.get('cues', []),
+                           key=lambda c: (float(c.get('at') or 0),
+                                          0 if c.get('type') != 'video' else 1))
+        self.scene_cues = [c for c in self.cues
+                           if c.get('type') not in ('video', 'palette')]
+        self.video_cues = [c for c in self.cues if c.get('type') == 'video']
+        self.palette_cues = sorted([c for c in self.cues
+                                    if c.get('type') == 'palette'],
+                                   key=lambda c: float(c.get('at') or 0))
+        self.cue_index = -1
+        self.cue_pos = None
+        self.video = None
+        self.video_state = ['armed'] * len(self.video_cues)
+        self.palette = None
+        self.palette_index = -1
 
     # ---- mutations -------------------------------------------------------
     def _bump(self):
@@ -191,13 +336,12 @@ class Box:
             self.stage = stage
             self.override = None      # a stage command clears an override
             entry = self._stage_entry()
-            if self._cue_stage():
+            cued = self._cue_stage()
+            # switch docs (or drop to none) before anything is evaluated
+            self._use_cues(entry.get('cues') if cued else None)
+            if cued:
                 # arriving on a cue stage: resolve from wherever the playhead
                 # already is, and do not replay a video insert we landed inside
-                self.cue_index = -1
-                self.cue_pos = None
-                self.video = None
-                self.video_state = ['armed'] * len(self.video_cues)
                 self.source = 'cue'
                 self._eval_cues(self._position(), force=True)
             else:
@@ -218,7 +362,12 @@ class Box:
                 self.override = None
                 if self._cue_stage():
                     self.source = 'cue'
+                    # both indices go back to "nothing resolved yet" so the
+                    # forced eval re-emits scene AND palette — the palette
+                    # arriving with live=False, i.e. snap to it, because the TV
+                    # never saw the crossfade it slept through
                     self.cue_index = -1
+                    self.palette_index = -1
                     self._eval_cues(self._position(), force=True)
                 else:
                     entry = self._stage_entry()
@@ -299,6 +448,10 @@ class Box:
             AND the playhead ENTERED that window by playing through its start.
             Seeking into the middle marks it skipped (no half-clip), seeking
             past it never plays it, and rewinding to before `at` re-arms it.
+          * the ACTIVE PALETTE is the last palette cue with at <= pos, same
+            lookup as the scene. It carries one bit of history, `live`, which
+            says the playhead WALKED over the cue rather than landing past it;
+            the page fades only then.
         """
         if self.override is not None or not self._cue_stage():
             return False
@@ -324,6 +477,35 @@ class Box:
                          'return_scene': c.get('return_scene')}
                 break
 
+        # --- palette ------------------------------------------------------
+        # Pure lookup, like the scene below. The whole coefficient set travels
+        # to the page, because the page has no cue list — it renders state.
+        # `live` is the only history here, and it is what stops a seek or a
+        # late-joining TV from sitting through an 8 s crossfade of a palette it
+        # never showed: on anything but a continuous forward crossing the page
+        # is told to snap.
+        pidx = -1
+        for i, c in enumerate(self.palette_cues):
+            if float(c.get('at') or 0) <= pos:
+                pidx = i
+            else:
+                break
+        palette = self.palette
+        if pidx != self.palette_index:
+            if pidx < 0:
+                palette = None
+            else:
+                c = self.palette_cues[pidx]
+                at = float(c.get('at') or 0)
+                palette = {
+                    'index': pidx,
+                    'at': at,
+                    'fade': float(c.get('fade') or 0),
+                    'live': bool(continuous and prev is not None and prev < at),
+                    'track': c.get('track'),
+                    'palette': c.get('palette') or {},
+                }
+
         # --- scene --------------------------------------------------------
         idx = -1
         for i, c in enumerate(self.scene_cues):
@@ -344,11 +526,14 @@ class Box:
             scene = video['return_scene']
 
         changed = (scene != self.scene or logo != self.logo
-                   or video != self.video or idx != self.cue_index)
+                   or video != self.video or idx != self.cue_index
+                   or pidx != self.palette_index)
         self.cue_index = idx
+        self.palette_index = pidx
         self.scene = scene
         self.logo = logo
         self.video = video
+        self.palette = palette
         self.source = 'cue'
         return changed
 
@@ -365,9 +550,11 @@ class Box:
                 break
         return {
             'file': self.cue_doc.get('_file'),
+            'cues_rev': self.cues_rev,
             'count': len(self.cues),
             'position': round(pos, 3),
             'index': self.cue_index,
+            'palette': self.palette.get('track') if self.palette else None,
             'current': ({'scene': cur.get('scene'), 'at': cur.get('at'),
                          'track': cur.get('track')} if cur else None),
             'next': ({'type': nxt.get('type'), 'at': nxt.get('at'),
@@ -376,6 +563,103 @@ class Box:
                      if nxt else None),
             'video_state': list(self.video_state),
         }
+
+    # ---- cue docs --------------------------------------------------------
+    def save_cues(self, body):
+        """Replace one cue doc, on disk and under the running show.
+
+        The timeline editor is the caller: it drags an `at` and posts the whole
+        doc back. Two guards carry the weight. The filename must be a bare
+        basename that the STAGE MAP already names — that is the traversal check
+        AND the reason this endpoint can never invent a file on the show
+        machine — and the doc must validate, because a bad one takes the cue
+        thread down twenty times a second.
+        """
+        fname = body.get('file')
+        errs = []
+        if not isinstance(fname, str) or not fname:
+            errs.append('`file` is required')
+        elif fname != os.path.basename(fname) or not fname.endswith('.json'):
+            errs.append('`file` must be a bare .json basename')
+        elif fname not in set(stage_cue_files(self.stage_map).values()):
+            errs.append('%s is not named by any stage in stage_map.json' % fname)
+        if errs:
+            return {'error': 'bad request', 'errors': errs}, 400
+        errs = validate_cue_doc(body.get('doc'))
+        if errs:
+            return {'error': 'invalid cue doc', 'errors': errs}, 400
+
+        doc = dict(body['doc'])
+        doc.pop('_file', None)        # ours to stamp, not the caller's to claim
+        if not write_json_atomic(os.path.join(HERE, fname), doc):
+            return {'error': 'could not write %s' % fname}, 500
+        doc['_file'] = fname
+        with self.lock:
+            self.cue_docs[fname] = doc
+            self.cues_rev += 1
+            if self._cue_stage() and self._stage_entry().get('cues') == fname:
+                # the show is standing on this doc right now: re-point the
+                # engine at the new list and resolve from wherever the playhead
+                # already is, so a moved cue lands without a stage bounce
+                self._use_cues(fname)
+                self.source = 'cue'
+                self._eval_cues(self._position(), force=True)
+            self._bump()
+            return {'ok': True, 'file': fname,
+                    'count': len(doc.get('cues') or []),
+                    'cues_rev': self.cues_rev, 'seq': self.seq}, 200
+
+    def cue_docs_view(self):
+        """GET /show/cues — every loaded doc, said per stage.
+
+        Per stage rather than one doc, because two stages now run timelines and
+        a consumer that wants to draw the opener needs to know which is which.
+        """
+        with self.lock:
+            stages = {}
+            for stage, fname in stage_cue_files(self.stage_map).items():
+                doc = self.cue_docs.get(fname)
+                if doc:
+                    stages[stage] = {'file': fname, 'doc': doc}
+            return {'active': self.cue_doc.get('_file'),
+                    'cues_rev': self.cues_rev, 'stages': stages}
+
+    # ---- live effect controls -------------------------------------------
+    def apply_controls(self, body):
+        """The console turning knobs. Ephemeral by design — see self.live.
+
+        Merged, not replaced: the CTRL panel flushes only what moved, at up to
+        10 Hz, so a hue drag must not wipe the exposure set a second earlier.
+        The one thing replaced wholesale is the control map on a scene change —
+        control names are per-scene, and feeding a stale one to the next
+        shader is how a uniform ends up meaning nothing.
+        """
+        with self.lock:
+            live = dict(self.live)
+            scene = body.get('scene')
+            if scene is not None:
+                scene = str(scene).strip().upper()
+                if scene != live.get('scene'):
+                    live.pop('controls', None)
+                live['scene'] = scene
+            if isinstance(body.get('controls'), dict):
+                merged = dict(live.get('controls') or {})
+                merged.update(body['controls'])
+                live['controls'] = merged
+            for key in ('grade', 'audio'):
+                if isinstance(body.get(key), dict):
+                    merged = dict(live.get(key) or {})
+                    merged.update(body[key])
+                    live[key] = merged
+            if body.get('quality') is not None:
+                try:
+                    live['quality'] = float(body['quality'])
+                except (TypeError, ValueError):
+                    return {'error': 'quality must be a number'}, 400
+            live['rev'] = int(live.get('rev', 0)) + 1
+            self.live = live
+            self._bump()
+            return {'ok': True, 'rev': live['rev']}, 200
 
     # ---- per-scene presets ----------------------------------------------
     def save_preset(self, body):
@@ -407,6 +691,14 @@ class Box:
         # checking from a laptop) — they all get the same commands, and the
         # last report wins. `from` says which one you are looking at.
         with self.lock:
+            # The control surface is popped OUT of the report rather than left
+            # in it: it is by far the biggest thing the page sends (every
+            # slider spec of the active scene), it only arrives when it has
+            # changed, and echoing it inside `page` as well would put a copy of
+            # it in every status response for nothing.
+            ctrl = body.pop('ctrl', None)
+            if ctrl is not None:
+                self.page_ctrl = ctrl
             self.page = dict(body, **{'from': addr})
             self.page_at = time.time()
 
@@ -415,10 +707,17 @@ class Box:
             self.page_at = time.time()
 
     # ---- reads -----------------------------------------------------------
-    def snapshot(self, cfg):
+    def snapshot(self, cfg, events=False):
+        """The whole box as JSON. `events=True` trims it for the long poll.
+
+        /show/events fires on every seq bump — 20 Hz worth of cue ticks during
+        a busy passage — and the kiosk reads none of `page`, `page_ctrl` or
+        `stage_map`. They are also the three fattest fields in here. The
+        console polls /show/status, which keeps everything.
+        """
         now = time.time()
         with self.lock:
-            return {
+            snap = {
                 'seq': self.seq,
                 'scene': self.scene,
                 'logo': self.logo,
@@ -426,11 +725,14 @@ class Box:
                 'source': self.source,
                 'override': self.override,
                 'video': dict(self.video) if self.video else None,
+                'palette': dict(self.palette) if self.palette else None,
                 'cue': self.cue_status(),
                 'presets_rev': self.presets_rev,
+                'live': dict(self.live),
                 'transport': dict(self.transport),
                 'sync_age': round(now - self.sync_at, 2) if self.sync_at else None,
                 'page': self.page,
+                'page_ctrl': self.page_ctrl,
                 'page_age': round(now - self.page_at, 2) if self.page_at else None,
                 'page_connected': bool(self.page_at and now - self.page_at < 6.0),
                 'stage_map': self.stage_map,
@@ -439,6 +741,10 @@ class Box:
                 'logo_style': cfg.get('logo', DEFAULT_CONFIG['logo']),
                 'server_time': round(now, 3),
             }
+            if events:
+                for k in ('page', 'page_ctrl', 'stage_map'):
+                    snap.pop(k, None)
+            return snap
 
     def wait_past(self, since, cfg):
         """Block until seq > since, or POLL_TIMEOUT. Always returns a state.
@@ -450,13 +756,13 @@ class Box:
         deadline = time.time() + POLL_TIMEOUT
         with self.lock:
             if since > self.seq:
-                return self.snapshot(cfg)
+                return self.snapshot(cfg, events=True)
             while self.seq <= since:
                 left = deadline - time.time()
                 if left <= 0:
                     break
                 self.lock.wait(left)
-        return self.snapshot(cfg)
+        return self.snapshot(cfg, events=True)
 
 
 # --------------------------------------------------------------- scene roster
@@ -632,6 +938,18 @@ class Handler(SimpleHTTPRequestHandler):
                          else 'saved (%d controls)'
                               % len((r['preset'].get('controls') or {}))))
             return self._json(r, code)
+        if p.path == '/show/cues':
+            r, code = self.box.save_cues(body)
+            print('[follower] cues %s' % ('%s saved (%d cues, rev %d)'
+                                          % (r['file'], r['count'], r['cues_rev'])
+                                          if code == 200
+                                          else 'rejected: %s'
+                                               % '; '.join(r.get('errors') or
+                                                           [r.get('error', '?')])))
+            return self._json(r, code)
+        if p.path == '/show/controls':
+            r, code = self.box.apply_controls(body)
+            return self._json(r, code)
         return self._json({'error': 'not found'}, 404)
 
     def _show_get(self, p):
@@ -643,7 +961,7 @@ class Handler(SimpleHTTPRequestHandler):
         if p.path == '/show/config':
             return self._json(self.cfg)
         if p.path == '/show/cues':
-            return self._json(self.box.cue_doc)
+            return self._json(self.box.cue_docs_view())
         if p.path == '/show/presets':
             return self._json({'rev': self.box.presets_rev,
                                'presets': self.box.presets})
@@ -737,15 +1055,16 @@ def main():
                                            'stages': {}})
     port = args.port or int(cfg.get('port', 8123))
 
-    # the cue file is named by whichever stage rows use one (only `main` today)
-    cue_doc = {}
-    cue_names = {e.get('cues') for e in stage_map.get('stages', {}).values()
-                 if isinstance(e, dict) and e.get('cues')}
-    for name in sorted(cue_names):
+    # EVERY cue file any stage row names, not just the first: `main` runs the
+    # DJ set's timeline and `opener` runs its own, and arriving on a stage
+    # picks the doc (Box._use_cues). Keyed by basename, which is also the only
+    # name POST /show/cues will accept.
+    cue_docs = {}
+    for name in sorted(set(stage_cue_files(stage_map).values())):
         path = name if os.path.isabs(name) else os.path.join(HERE, name)
-        cue_doc = load_json(path, {})
-        cue_doc['_file'] = os.path.basename(path)
-        break
+        doc = load_json(path, {})
+        doc['_file'] = os.path.basename(path)
+        cue_docs[doc['_file']] = doc
     presets = load_json(PRESETS_PATH, {}) if os.path.exists(PRESETS_PATH) else {}
 
     audio_dir = os.path.expanduser(
@@ -754,7 +1073,7 @@ def main():
         audio_dir = os.path.join(REPO, audio_dir)
     audio_dir = os.path.normpath(audio_dir)
 
-    box = Box(stage_map, cue_doc, presets)
+    box = Box(stage_map, cue_docs, presets)
     Handler.box = box
     Handler.cfg = cfg
     Handler.audio_dir = audio_dir
@@ -777,8 +1096,15 @@ def main():
     print('[follower] serving %s on %s:%d' % (REPO, args.host, port))
     print('[follower] audio dir: %s (%s)'
           % (audio_dir, 'present' if os.path.isdir(audio_dir) else 'MISSING'))
-    print('[follower] cues: %s (%d) · presets: %d scene(s)'
-          % (cue_doc.get('_file') or 'none', len(box.cues), len(presets)))
+    for stage, fname in sorted(stage_cue_files(stage_map).items()):
+        doc = cue_docs.get(fname) or {}
+        cues = doc.get('cues') or []
+        print('[follower] cues: %-8s %s (%d cue%s)%s'
+              % (stage, fname, len(cues), '' if len(cues) == 1 else 's',
+                 '' if cues else '  ← EMPTY OR MISSING'))
+    if not cue_docs:
+        print('[follower] cues: none (no stage names a cue file)')
+    print('[follower] presets: %d scene(s)' % len(presets))
     print('[follower] audible=%s · gallery: http://localhost:%d/demos.html?show=1'
           % (cfg.get('audible', False), port))
     try:
