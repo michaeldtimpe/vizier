@@ -1,493 +1,494 @@
 {
   "_note": "PARTY MOUNTAIN 2026 main-set visual cues. Times are MAIN-SET TRACK POSITION in seconds against party-mountain-16bit-release.wav (one continuous file), NOT wall clock \u2014 the follower evaluates them against the synced transport position, so pausing and seeking stay correct. Source of truth for the list: show-view/pm-2026-dj-set-visual-cues-list.txt; `at_original` is what the operator typed (+-1 s by hand) and `at` is that time snapped onto the nearest real beat change by demos/show/cues-snap-report.txt. Edit `at` freely; nothing regenerates this file.",
   "audio": "party-mountain-16bit-release.wav",
-  "duration": 4702.041,
-  "generated": "spectral-flux snap, max shift 1.2 s",
   "cues": [
     {
-      "type": "scene",
-      "at": 0.0,
-      "at_original": 0.0,
+      "at": 0,
+      "at_original": 0,
       "at_original_hms": "00:00:00",
       "scene": "PLUS",
-      "track": "Vincent Antone - Extraordinary Lengths",
       "snap": {
+        "confidence": 1,
         "delta_ms": 0,
-        "confidence": 1.0,
-        "onset_z": 0.0,
-        "margin": 0.0,
-        "flag": "set start \u2014 not snapped"
-      }
+        "flag": "set start \u2014 not snapped",
+        "margin": 0,
+        "onset_z": 0
+      },
+      "track": "Vincent Antone - Extraordinary Lengths",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 198.937,
-      "at_original": 199.0,
+      "at": 199.87,
+      "at_original": 199,
       "at_original_hms": "00:03:19",
       "scene": "CIRCLES5",
-      "track": "RL Grime - Aurora (NGHTMRE Remix)",
       "snap": {
-        "delta_ms": -63,
         "confidence": 0.923,
-        "onset_z": 4.44,
+        "delta_ms": -63,
+        "flag": null,
         "margin": 0.296,
-        "flag": null
-      }
+        "onset_z": 4.44
+      },
+      "track": "RL Grime - Aurora (NGHTMRE Remix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 403.821,
-      "at_original": 404.0,
+      "at": 403.956,
+      "at_original": 404,
       "at_original_hms": "00:06:44",
       "scene": "COMPOUND_IRIS",
-      "track": "who we are - messwave",
       "snap": {
-        "delta_ms": -179,
         "confidence": 0.544,
-        "onset_z": 3.28,
+        "delta_ms": -179,
+        "flag": "ambiguous: 5 beats of similar strength in the window \u2014 took the one nearest the typed time",
         "margin": 0.031,
-        "flag": "ambiguous: 5 beats of similar strength in the window \u2014 took the one nearest the typed time"
-      }
+        "onset_z": 3.28
+      },
+      "track": "who we are - messwave",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 542.175,
-      "at_original": 542.0,
+      "at": 542.689,
+      "at_original": 542,
       "at_original_hms": "00:09:02",
       "scene": "REPLIK8",
-      "track": "Artemas - I Like The Way You Kiss Me (YDG Remix)",
       "snap": {
-        "delta_ms": 175,
         "confidence": 0.783,
-        "onset_z": 4.74,
+        "delta_ms": 175,
+        "flag": null,
         "margin": 0.198,
-        "flag": null
-      }
+        "onset_z": 4.74
+      },
+      "track": "Artemas - I Like The Way You Kiss Me (YDG Remix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 693.827,
-      "at_original": 694.0,
+      "at": 694.102,
+      "at_original": 694,
       "at_original_hms": "00:11:34",
       "scene": "MIN_MAX_HEX",
-      "track": "Levity - Flip It",
       "snap": {
-        "delta_ms": -173,
         "confidence": 0.71,
-        "onset_z": 3.75,
+        "delta_ms": -173,
+        "flag": null,
         "margin": 0.147,
-        "flag": null
-      }
+        "onset_z": 3.75
+      },
+      "track": "Levity - Flip It",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 809.438,
-      "at_original": 810.0,
+      "at": 810.421,
+      "at_original": 810,
       "at_original_hms": "00:13:30",
       "scene": "FUZZY_SIGNAL",
-      "track": "Porter Robinson, Amy Millan - Divinity (ODESZA Remix)",
       "snap": {
-        "delta_ms": -562,
         "confidence": 0.828,
-        "onset_z": 4.33,
+        "delta_ms": -562,
+        "flag": null,
         "margin": 0.229,
-        "flag": null
-      }
+        "onset_z": 4.33
+      },
+      "track": "Porter Robinson, Amy Millan - Divinity (ODESZA Remix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 1002.827,
-      "at_original": 1003.0,
+      "at": 1003.87,
+      "at_original": 1003,
       "at_original_hms": "00:16:43",
       "scene": "BEAMERS",
-      "track": "Phantogram - You Don't Get Me High Anymore (ATTLAS Remix)",
       "snap": {
-        "delta_ms": -173,
         "confidence": 0.548,
-        "onset_z": 4.36,
+        "delta_ms": -173,
+        "flag": "ambiguous: 3 beats of similar strength in the window \u2014 took the one nearest the typed time",
         "margin": 0.034,
-        "flag": "ambiguous: 3 beats of similar strength in the window \u2014 took the one nearest the typed time"
-      }
+        "onset_z": 4.36
+      },
+      "track": "Phantogram - You Don't Get Me High Anymore (ATTLAS Remix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 1239.413,
-      "at_original": 1239.0,
+      "at": 1239.503,
+      "at_original": 1239,
       "at_original_hms": "00:20:39",
       "scene": "LATTIX",
-      "track": "Ark Patrol - Hex (new version)",
       "snap": {
-        "delta_ms": 413,
         "confidence": 0.808,
-        "onset_z": 6.32,
+        "delta_ms": 413,
+        "flag": null,
         "margin": 0.215,
-        "flag": null
-      }
+        "onset_z": 6.32
+      },
+      "track": "Ark Patrol - Hex (new version)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 1416.622,
-      "at_original": 1416.0,
+      "at": 1416.172,
+      "at_original": 1416,
       "at_original_hms": "00:23:36",
       "scene": "SQUARE_SHOALS",
-      "track": "LSDREAM - SHADOW SELF",
       "snap": {
-        "delta_ms": 622,
         "confidence": 0.501,
-        "onset_z": 6.51,
-        "margin": 0.0,
-        "flag": "ambiguous: 3 beats of similar strength in the window \u2014 took the one nearest the typed time"
-      }
+        "delta_ms": 622,
+        "flag": "ambiguous: 3 beats of similar strength in the window \u2014 took the one nearest the typed time",
+        "margin": 0,
+        "onset_z": 6.51
+      },
+      "track": "LSDREAM - SHADOW SELF",
+      "type": "scene"
     },
     {
-      "type": "scene",
       "at": 1642.03,
-      "at_original": 1642.0,
+      "at_original": 1642,
       "at_original_hms": "00:27:22",
       "scene": "HEXOPLANET",
-      "track": "ISOxo - MOONSPELL",
       "snap": {
+        "confidence": 1,
         "delta_ms": 30,
-        "confidence": 1.0,
-        "onset_z": 7.55,
+        "flag": null,
         "margin": 0.648,
-        "flag": null
-      }
-    },
-    {
-      "type": "video",
-      "at": 1653.762,
-      "at_original": 1653.0,
-      "at_original_hms": "00:27:33",
-      "video": "moon.mp4",
-      "duration": 26.0,
-      "return_scene": "HEXOPLANET",
+        "onset_z": 7.55
+      },
       "track": "ISOxo - MOONSPELL",
-      "snap": {
-        "delta_ms": 762,
-        "confidence": 0.817,
-        "onset_z": 8.9,
-        "margin": 0.222,
-        "flag": null
-      }
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 1795.39,
-      "at_original": 1795.0,
+      "at": 1653.762,
+      "at_original": 1653,
+      "at_original_hms": "00:27:33",
+      "duration": 26,
+      "return_scene": "HEXOPLANET",
+      "snap": {
+        "confidence": 0.817,
+        "delta_ms": 762,
+        "flag": null,
+        "margin": 0.222,
+        "onset_z": 8.9
+      },
+      "track": "ISOxo - MOONSPELL",
+      "type": "video",
+      "video": "moon.mp4"
+    },
+    {
+      "at": 1794.737,
+      "at_original": 1795,
       "at_original_hms": "00:29:55",
       "scene": "HILLS_EELS",
-      "track": "G Jones & Eprom - R.A.V.E",
       "snap": {
-        "delta_ms": 390,
         "confidence": 0.918,
-        "onset_z": 7.67,
+        "delta_ms": 390,
+        "flag": null,
         "margin": 0.293,
-        "flag": null
-      }
+        "onset_z": 7.67
+      },
+      "track": "G Jones & Eprom - R.A.V.E",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 1941.606,
-      "at_original": 1942.0,
+      "at": 1942.006,
+      "at_original": 1942,
       "at_original_hms": "00:32:22",
       "scene": "WATERLY",
-      "track": "Vanic - Human",
       "snap": {
-        "delta_ms": -394,
         "confidence": 0.626,
-        "onset_z": 5.21,
+        "delta_ms": -394,
+        "flag": null,
         "margin": 0.088,
-        "flag": null
-      }
+        "onset_z": 5.21
+      },
+      "track": "Vanic - Human",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 2059.682,
-      "at_original": 2060.0,
+      "at": 2064,
+      "at_original": 2060,
       "at_original_hms": "00:34:20",
       "scene": "SCAFFOLD_FRACTAL",
-      "track": "Belladonna - Gold Geisha",
       "snap": {
-        "delta_ms": -318,
         "confidence": 0.983,
-        "onset_z": 6.75,
+        "delta_ms": -318,
+        "flag": null,
         "margin": 0.338,
-        "flag": null
-      }
+        "onset_z": 6.75
+      },
+      "track": "Belladonna - Gold Geisha",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 2217.519,
-      "at_original": 2218.0,
+      "at": 2218.34,
+      "at_original": 2218,
       "at_original_hms": "00:36:58",
       "scene": "FLAME",
-      "track": "Rome in Silver - Fool",
       "snap": {
-        "delta_ms": -481,
         "confidence": 0.748,
-        "onset_z": 3.81,
+        "delta_ms": -481,
+        "flag": null,
         "margin": 0.173,
-        "flag": null
-      }
+        "onset_z": 3.81
+      },
+      "track": "Rome in Silver - Fool",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 2420.111,
-      "at_original": 2420.0,
+      "at": 2420.95,
+      "at_original": 2420,
       "at_original_hms": "00:40:20",
       "scene": "TUNNEL_BEAUTY_6",
-      "track": "Big Data - Dangerous (Oliver remix)",
       "snap": {
-        "delta_ms": 111,
         "confidence": 0.845,
-        "onset_z": 4.77,
+        "delta_ms": 111,
+        "flag": null,
         "margin": 0.241,
-        "flag": null
-      }
+        "onset_z": 4.77
+      },
+      "track": "Big Data - Dangerous (Oliver remix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 2596.063,
-      "at_original": 2595.0,
+      "at": 2595.667,
+      "at_original": 2595,
       "at_original_hms": "00:43:15",
       "scene": "ALIEN_CAVERN",
-      "track": "Tame Impala - Dracula (JENNIE Remix)",
       "snap": {
-        "delta_ms": 1063,
         "confidence": 0.971,
-        "onset_z": 12.49,
+        "delta_ms": 1063,
+        "flag": null,
         "margin": 0.33,
-        "flag": null
-      }
-    },
-    {
-      "type": "video",
-      "at": 2615.582,
-      "at_original": 2615.0,
-      "at_original_hms": "00:43:35",
-      "video": "dracula.mp4",
-      "duration": 34.0,
-      "return_scene": "ALIEN_CAVERN",
+        "onset_z": 12.49
+      },
       "track": "Tame Impala - Dracula (JENNIE Remix)",
-      "snap": {
-        "delta_ms": 582,
-        "confidence": 1.0,
-        "onset_z": 14.14,
-        "margin": 0.591,
-        "flag": null
-      }
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 2786.651,
-      "at_original": 2786.0,
+      "at": 2615.582,
+      "at_original": 2615,
+      "at_original_hms": "00:43:35",
+      "duration": 34,
+      "return_scene": "ALIEN_CAVERN",
+      "snap": {
+        "confidence": 1,
+        "delta_ms": 582,
+        "flag": null,
+        "margin": 0.591,
+        "onset_z": 14.14
+      },
+      "track": "Tame Impala - Dracula (JENNIE Remix)",
+      "type": "video",
+      "video": "dracula.mp4"
+    },
+    {
+      "at": 2788.021,
+      "at_original": 2786,
       "at_original_hms": "00:46:26",
       "scene": "PARTY_DOODAD",
-      "track": "The Dare - Girls",
       "snap": {
-        "delta_ms": 651,
         "confidence": 0.813,
-        "onset_z": 8.26,
+        "delta_ms": 651,
+        "flag": null,
         "margin": 0.219,
-        "flag": null
-      }
+        "onset_z": 8.26
+      },
+      "track": "The Dare - Girls",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 2895.111,
-      "at_original": 2895.0,
+      "at": 2895.6,
+      "at_original": 2895,
       "at_original_hms": "00:48:15",
       "scene": "KIFS_FLYTHROUGH",
-      "track": "Odd Mob - Intrinsic",
       "snap": {
-        "delta_ms": 111,
         "confidence": 0.509,
-        "onset_z": 2.5,
+        "delta_ms": 111,
+        "flag": "ambiguous: 4 beats of similar strength in the window \u2014 took the one nearest the typed time",
         "margin": 0.018,
-        "flag": "ambiguous: 4 beats of similar strength in the window \u2014 took the one nearest the typed time"
-      }
+        "onset_z": 2.5
+      },
+      "track": "Odd Mob - Intrinsic",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 3045.518,
-      "at_original": 3045.0,
+      "at": 3045.9,
+      "at_original": 3045,
       "at_original_hms": "00:50:45",
       "scene": "INKSHOT",
-      "track": "Black V Neck - Talk (Extended Mix) [ACAPELLA]",
       "snap": {
+        "confidence": 1,
         "delta_ms": 518,
-        "confidence": 1.0,
-        "onset_z": 9.61,
+        "flag": null,
         "margin": 0.454,
-        "flag": null
-      }
+        "onset_z": 9.61
+      },
+      "track": "Black V Neck - Talk (Extended Mix) [ACAPELLA]",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 3135.036,
-      "at_original": 3135.0,
+      "at": 3135.99,
+      "at_original": 3135,
       "at_original_hms": "00:52:15",
       "scene": "HEXTUNNEL",
-      "track": "Ed Sheeran - Bad Habits (MEDUZA Extended Remix)",
       "snap": {
-        "delta_ms": 36,
         "confidence": 0.51,
-        "onset_z": 3.69,
+        "delta_ms": 36,
+        "flag": "ambiguous: 4 beats of similar strength in the window \u2014 took the one nearest the typed time",
         "margin": 0.007,
-        "flag": "ambiguous: 4 beats of similar strength in the window \u2014 took the one nearest the typed time"
-      }
+        "onset_z": 3.69
+      },
+      "track": "Ed Sheeran - Bad Habits (MEDUZA Extended Remix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 3261.601,
-      "at_original": 3262.0,
+      "at": 3263.007,
+      "at_original": 3262,
       "at_original_hms": "00:54:22",
       "scene": "DISPERSION",
-      "track": "SIDEPIECE - Together",
       "snap": {
-        "delta_ms": -399,
         "confidence": 0.802,
-        "onset_z": 6.96,
+        "delta_ms": -399,
+        "flag": null,
         "margin": 0.211,
-        "flag": null
-      }
+        "onset_z": 6.96
+      },
+      "track": "SIDEPIECE - Together",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 3438.543,
-      "at_original": 3439.0,
+      "at": 3439.22,
+      "at_original": 3439,
       "at_original_hms": "00:57:19",
       "scene": "GLOB",
-      "track": "BORNS - Electric Love (Oliver Remix) [ACAPPELA]",
       "snap": {
-        "delta_ms": -457,
         "confidence": 0.748,
-        "onset_z": 4.14,
+        "delta_ms": -457,
+        "flag": null,
         "margin": 0.173,
-        "flag": null
-      }
+        "onset_z": 4.14
+      },
+      "track": "BORNS - Electric Love (Oliver Remix) [ACAPPELA]",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 3467.786,
-      "at_original": 3468.0,
+      "at": 3468.19,
+      "at_original": 3468,
       "at_original_hms": "00:57:48",
       "scene": "KALEIDOWHOA_MAN",
-      "track": "Tinashe & Disco Lines - No Broke Boys (Extended)",
       "snap": {
-        "delta_ms": -214,
         "confidence": 0.737,
-        "onset_z": 6.62,
+        "delta_ms": -214,
+        "flag": null,
         "margin": 0.166,
-        "flag": null
-      }
+        "onset_z": 6.62
+      },
+      "track": "Tinashe & Disco Lines - No Broke Boys (Extended)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 3643.001,
-      "at_original": 3643.0,
+      "at": 3643.19,
+      "at_original": 3643,
       "at_original_hms": "01:00:43",
       "scene": "SHROUDED",
-      "track": "Umek - Once Again (Original Mix)",
       "snap": {
-        "delta_ms": 1,
         "confidence": 0.678,
-        "onset_z": 3.64,
+        "delta_ms": 1,
+        "flag": null,
         "margin": 0.124,
-        "flag": null
-      }
+        "onset_z": 3.64
+      },
+      "track": "Umek - Once Again (Original Mix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 3817.669,
-      "at_original": 3817.0,
+      "at": 3817.753,
+      "at_original": 3817,
       "at_original_hms": "01:03:37",
       "scene": "NOVA",
-      "track": "CAZZETTE - Beam Me Up [ACAPELLA]",
       "snap": {
-        "delta_ms": 669,
         "confidence": 0.904,
-        "onset_z": 3.67,
+        "delta_ms": 669,
+        "flag": null,
         "margin": 0.283,
-        "flag": null
-      }
+        "onset_z": 3.67
+      },
+      "track": "CAZZETTE - Beam Me Up [ACAPELLA]",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 3933.477,
-      "at_original": 3933.0,
+      "at": 3933.48,
+      "at_original": 3933,
       "at_original_hms": "01:05:33",
       "scene": "MANDALA",
-      "track": "Chrystal - The Days (NOTION remix)",
       "snap": {
-        "delta_ms": 477,
         "confidence": 0.961,
-        "onset_z": 4.03,
+        "delta_ms": 477,
+        "flag": null,
         "margin": 0.323,
-        "flag": null
-      }
+        "onset_z": 4.03
+      },
+      "track": "Chrystal - The Days (NOTION remix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 4127.461,
-      "at_original": 4128.0,
+      "at": 4128.251,
+      "at_original": 4128,
       "at_original_hms": "01:08:48",
       "scene": "TRACED_TUNNEL",
-      "track": "Nate Band - Drugs I Like (Extended Mix)",
       "snap": {
-        "delta_ms": -539,
         "confidence": 0.841,
-        "onset_z": 8.48,
+        "delta_ms": -539,
+        "flag": null,
         "margin": 0.239,
-        "flag": null
-      }
+        "onset_z": 8.48
+      },
+      "track": "Nate Band - Drugs I Like (Extended Mix)",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 4322.897,
-      "at_original": 4323.0,
+      "at": 4323.132,
+      "at_original": 4323,
       "at_original_hms": "01:12:03",
       "scene": "GLASSIER",
-      "track": "Arche - La Lune X Wildest Dreams",
       "snap": {
+        "confidence": 1,
         "delta_ms": -103,
-        "confidence": 1.0,
-        "onset_z": 4.39,
+        "flag": null,
         "margin": 0.46,
-        "flag": null
-      }
+        "onset_z": 4.39
+      },
+      "track": "Arche - La Lune X Wildest Dreams",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 4524.036,
-      "at_original": 4524.0,
+      "at": 4524.264,
+      "at_original": 4524,
       "at_original_hms": "01:15:24",
       "scene": "SQUARE_SHOALS",
-      "track": "Sail - Schepetkov",
       "snap": {
-        "delta_ms": 36,
         "confidence": 0.982,
-        "onset_z": 5.23,
+        "delta_ms": 36,
+        "flag": null,
         "margin": 0.337,
-        "flag": null
-      }
+        "onset_z": 5.23
+      },
+      "track": "Sail - Schepetkov",
+      "type": "scene"
     },
     {
-      "type": "scene",
-      "at": 4700.0,
-      "at_original": 4700.0,
+      "at": 4700,
+      "at_original": 4700,
       "at_original_hms": "01:18:20",
+      "logo": true,
       "scene": "NEBULA",
-      "track": "OUTRO",
       "snap": {
+        "confidence": 0,
         "delta_ms": 0,
-        "confidence": 0.0,
-        "onset_z": 0.0,
-        "margin": 0.0,
-        "flag": "silent/flat window \u2014 kept user time"
+        "flag": "silent/flat window \u2014 kept user time",
+        "margin": 0,
+        "onset_z": 0
       },
-      "logo": true
+      "track": "OUTRO",
+      "type": "scene"
     }
-  ]
+  ],
+  "duration": 4702.041,
+  "edited": "2026-08-22T22:16:43.681Z",
+  "generated": "spectral-flux snap, max shift 1.2 s"
 }
