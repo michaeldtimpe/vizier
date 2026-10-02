@@ -1,0 +1,9 @@
+{
+  "name": "vizier-offline-render",
+  "private": true,
+  "type": "module",
+  "description": "Frame-exact offline render of a show stage (visuals + cues) to video.",
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}
