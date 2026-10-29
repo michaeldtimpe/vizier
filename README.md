@@ -170,7 +170,7 @@ demos/show/deploy-neo.sh neo           # push + (re)load both LaunchAgents
 - **`?show=1` is inert otherwise** — `demos/show/show-client.js` is dynamically
   imported only when the flag is present, and the logo layer is `display:none`
   without it.
-- The LaunchAgents run out of `~/arche/vizier`, not `~/Downloads/vizier`: macOS
+- The LaunchAgents run out of `~/arche/vizier`, not `~/Downloads/live-show/vizier`: macOS
   TCC blocks launchd-spawned processes from the Downloads folder. `deploy-neo.sh`
   maintains that copy and hard-links the wavs somewhere readable.
 

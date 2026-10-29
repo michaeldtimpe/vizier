@@ -30,9 +30,9 @@ import soundfile as sf
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # needs numpy + soundfile: run it with show-view's venv, which has both —
-#   ~/Downloads/show-view/.venv/bin/python demos/show/snap_cues.py
+#   ~/Downloads/live-show/show-view/.venv/bin/python demos/show/snap_cues.py
 WAV = os.environ.get('PM_WAV') or os.path.expanduser(
-    '~/Downloads/show-view/party-mountain-2026-tracks/dj-set/'
+    '~/Downloads/live-show/show-view/party-mountain-2026-tracks/dj-set/'
     'party-mountain-16bit-release.wav')
 OUT_JSON = os.path.join(HERE, 'cues-pm-2026.json')
 OUT_REPORT = os.path.join(HERE, 'cues-snap-report.txt')

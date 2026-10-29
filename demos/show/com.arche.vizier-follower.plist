@@ -8,11 +8,11 @@
      Restart after a deploy:
        launchctl kickstart -k gui/$(id -u)/com.arche.vizier-follower
 
-     ~/arche/vizier, NOT ~/Downloads/vizier: macOS TCC will not let a
+     ~/arche/vizier, NOT ~/Downloads/live-show/vizier: macOS TCC will not let a
      launchd-spawned process read ~/Downloads without a consent dialog, and on
      a headless TV machine nobody is there to answer it — the process blocks
      or dies with "Operation not permitted". Same reason for --audio-dir: the
-     show wavs are hard-linked out of ~/Downloads/show-view into
+     show wavs are hard-linked out of ~/Downloads/live-show/show-view into
      ~/arche/show-audio (same bytes, allowed path). deploy-neo.sh does both.
 
      Paths go through $HOME on purpose — the same file works whatever the
